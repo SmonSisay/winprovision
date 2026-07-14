@@ -15,6 +15,19 @@ import (
 	"github.com/SmonSisay/winprovision/internal/utils"
 )
 
+var fallbackSilentFlags = [][]string{
+	{"/S"},
+	{"/silent"},
+	{"/quiet"},
+	{"/qn"},
+	{"/quiet", "/norestart"},
+	{"/S", "/v", "/qn"},
+	{"--silent"},
+	{"-silent"},
+	{},
+}
+
+
 const moduleName = "installer"
 
 // defaultSilentArgs are tried in order when an auto-discovered installer has
@@ -63,6 +76,61 @@ func IsInstalled(app models.AppDefinition) (bool, string, error) {
 	return false, "", nil
 }
 
+// appFolderName guesses the folder name for an app based on its name or path.
+func appFolderName(app models.AppDefinition) string {
+	path := filepath.ToSlash(strings.TrimSpace(app.InstallerPath))
+	if idx := strings.Index(path, "/"); idx > 0 {
+		return path[:idx]
+	}
+	return app.Name
+}
+
+// resolveInstallerPath finds the installer executable. It tries the exact
+// path from apps.json first, then searches the app folder for any .exe.
+func resolveInstallerPath(app models.AppDefinition, softwareRoot string) string {
+	base := filepath.Join(softwareRoot, filepath.FromSlash(app.InstallerPath))
+	if utils.FileExists(base) {
+		return base
+	}
+
+	// Search app folder by trying different possible directories
+	candidates := []string{
+		filepath.Dir(filepath.Join(softwareRoot, filepath.FromSlash(app.InstallerPath))),
+		filepath.Join(softwareRoot, appFolderName(app)),
+	}
+
+	for _, dir := range candidates {
+		if !utils.DirExists(dir) {
+			continue
+		}
+		for _, name := range []string{"setup.exe", "install.exe"} {
+			p := filepath.Join(dir, name)
+			if utils.FileExists(p) {
+				return p
+			}
+		}
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if !e.IsDir() && strings.EqualFold(filepath.Ext(e.Name()), ".exe") {
+				return filepath.Join(dir, e.Name())
+			}
+		}
+	}
+	return ""
+}
+
+// runInstaller tries to run the installer with the given args.
+func runInstaller(ctx context.Context, exePath string, args []string) error {
+	cmd := exec.CommandContext(ctx, exePath, args...)
+	cmd.Dir = filepath.Dir(exePath)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
 // Install runs the application installer from the copied software directory.
 func Install(ctx context.Context, app models.AppDefinition, softwareRoot string) models.TaskResult {
 	start := time.Now()
@@ -86,38 +154,43 @@ func Install(ctx context.Context, app models.AppDefinition, softwareRoot string)
 		return result
 	}
 
-	installerPath := filepath.Join(softwareRoot, filepath.FromSlash(app.InstallerPath))
-	if !utils.FileExists(installerPath) {
+	installerPath := resolveInstallerPath(app, softwareRoot)
+	if installerPath == "" {
+		folderName := appFolderName(app)
 		result.Status = models.TaskStatusFailed
-		result.Message = fmt.Sprintf("Installer missing: %s", installerPath)
-		result.Err = fmt.Errorf("installer not found: %s", installerPath)
+		result.Message = fmt.Sprintf("No installer (.exe) found in '%s' folder under software/", folderName)
+		result.Err = fmt.Errorf("no installer found for %s", app.Name)
 		result.Duration = time.Since(start)
 		return result
 	}
 
-	args := SplitArgs(app.SilentArgs)
-	cmd := exec.CommandContext(ctx, installerPath, args...)
-	cmd.Dir = filepath.Dir(installerPath)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	// Build list of flag sets to try
+	var flagSets [][]string
+	explicitArgs := SplitArgs(app.SilentArgs)
+	if len(explicitArgs) > 0 {
+		flagSets = append(flagSets, explicitArgs)
+	}
+	flagSets = append(flagSets, fallbackSilentFlags...)
 
-	runErr := cmd.Run()
-	duration := time.Since(start)
-	if runErr != nil {
-		exitCode := 1
-		if cmd.ProcessState != nil {
-			exitCode = cmd.ProcessState.ExitCode()
+	var lastErr error
+	for _, flags := range flagSets {
+		runErr := runInstaller(ctx, installerPath, flags)
+		if runErr == nil {
+			result.Status = models.TaskStatusSuccess
+			break
 		}
-		result.Status = models.TaskStatusFailed
-		result.Message = fmt.Sprintf("Installer failed (exit=%d)", exitCode)
-		result.Err = fmt.Errorf("run installer %s: %w", installerPath, runErr)
-		result.Duration = duration
+		lastErr = runErr
+	}
+
+	if result.Status != models.TaskStatusSuccess {
+		result.Message = fmt.Sprintf("All install attempts failed: %v", lastErr)
+		result.Err = fmt.Errorf("install %s: %w", installerPath, lastErr)
+		result.Duration = time.Since(start)
 		return result
 	}
 
-	result.Status = models.TaskStatusSuccess
 	result.Message = "Installed successfully"
-	result.Duration = duration
+	result.Duration = time.Since(start)
 	return result
 }
 

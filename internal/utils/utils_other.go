@@ -23,3 +23,8 @@ func DetectDestinationDrive() (string, error) {
 func GetOSBuildNumber() (uint32, error) {
 	return 0, fmt.Errorf("build number detection is only supported on Windows")
 }
+
+// DetectBootableDrive detects a bootable Windows drive.
+func DetectBootableDrive() (string, error) {
+	return "", fmt.Errorf("bootable drive detection is only supported on Windows")
+}

@@ -53,10 +53,16 @@ func LoadApps(rootDir string) ([]models.AppDefinition, error) {
 		return []models.AppDefinition{}, nil
 	}
 
+	seenNames := make(map[string]int, len(appsConfig.Applications))
 	for i := range appsConfig.Applications {
 		if err := validateApp(&appsConfig.Applications[i]); err != nil {
 			return nil, fmt.Errorf("application %q: %w", appsConfig.Applications[i].Name, err)
 		}
+		lowerName := strings.ToLower(strings.TrimSpace(appsConfig.Applications[i].Name))
+		if _, dup := seenNames[lowerName]; dup {
+			return nil, fmt.Errorf("duplicate application name: %q", appsConfig.Applications[i].Name)
+		}
+		seenNames[lowerName] = i
 	}
 	return appsConfig.Applications, nil
 }

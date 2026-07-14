@@ -240,10 +240,16 @@ func runWindowsTasks(ctx context.Context, settings *models.Settings, runTask fun
 }
 
 // runDotNetTask enables .NET Framework 3.5 if configured.
+// It first attempts to find a bootable Windows disk with sources\sxs.
+// Falls back to the executable directory if no bootable disk is found.
 func runDotNetTask(ctx context.Context, settings *models.Settings, rootDir string, runTask func(string, string, func() models.TaskResult) models.TaskResult) {
 	if settings.Windows.InstallDotNet35 {
 		runTask("dism", "Enable .NET Framework 3.5", func() models.TaskResult {
 			sxsPath := filepath.Join(rootDir, "sources", "sxs")
+			bootDrive, err := utils.DetectBootableDrive()
+			if err == nil {
+				sxsPath = bootDrive + `\sources\sxs`
+			}
 			return dism.EnableDotNet35(ctx, sxsPath)
 		})
 	}

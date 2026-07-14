@@ -1,4 +1,3 @@
-// Package progress renders console progress and final provisioning reports.
 package progress
 
 import (
@@ -12,7 +11,6 @@ import (
 	"github.com/SmonSisay/winprovision/internal/models"
 )
 
-// Display renders provisioning progress to the console.
 type Display struct {
 	startTime time.Time
 	results   []models.TaskResult
@@ -20,7 +18,6 @@ type Display struct {
 	completed int
 }
 
-// NewDisplay creates a new progress display.
 func NewDisplay(totalTasks int) *Display {
 	return &Display{
 		startTime: time.Now(),
@@ -28,37 +25,41 @@ func NewDisplay(totalTasks int) *Display {
 	}
 }
 
-// ShowBanner prints the application startup banner.
 func (d *Display) ShowBanner(version, windowsVersion, username string) {
-	cyan := color.New(color.FgCyan, color.Bold)
-	cyan.Println("============================================================")
-	cyan.Println("           Windows Provisioning Tool")
-	cyan.Println("============================================================")
-	fmt.Printf("Version:         %s\n", version)
-	fmt.Printf("Windows:         %s\n", windowsVersion)
-	fmt.Printf("Logged-in User:  %s\n", username)
+	green := color.New(color.FgGreen, color.Bold)
+	white := color.New(color.FgWhite, color.Bold)
+
+	green.Println("  ╔══════════════════════════════════════════════════════╗")
+	green.Println("  ║           WINDOWS PROVISION TOOL                    ║")
+	green.Println("  ╚══════════════════════════════════════════════════════╝")
+	white.Printf("  Version        :  ")
+	fmt.Println(version)
+	white.Printf("  Windows        :  ")
+	fmt.Println(windowsVersion)
+	white.Printf("  User           :  ")
+	fmt.Println(username)
 	fmt.Println()
 }
 
-// ShowDestination prints the detected destination summary.
 func (d *Display) ShowDestination(destination string) {
-	fmt.Printf("Destination:     %s\n\n", destination)
+	color.New(color.FgWhite, color.Bold).Print("  Destination    :  ")
+	fmt.Println(destination)
+	fmt.Println()
 }
 
-// ShowActionSummary prints the list of planned actions.
 func (d *Display) ShowActionSummary(actions []string) {
-	fmt.Println("Planned Actions:")
+	yellow := color.New(color.FgYellow, color.Bold)
+	white := color.New(color.FgWhite)
+	yellow.Println("  ─── Planned Actions ───")
 	for _, action := range actions {
-		fmt.Printf("  - %s\n", action)
+		white.Printf("    ✓ %s\n", action)
 	}
 	fmt.Println()
 }
 
-// Confirm prompts the user to confirm provisioning.
 func (d *Display) Confirm() (bool, error) {
 	reader := bufio.NewReader(os.Stdin)
-	yellow := color.New(color.FgYellow)
-	yellow.Print("Proceed with provisioning? [y/N]: ")
+	color.New(color.FgYellow, color.Bold).Print("  ▸ Proceed with provisioning? [y/N]: ")
 	line, err := reader.ReadString('\n')
 	if err != nil {
 		return false, fmt.Errorf("read confirmation: %w", err)
@@ -67,13 +68,11 @@ func (d *Display) Confirm() (bool, error) {
 	return answer == "y" || answer == "yes", nil
 }
 
-// TaskStart prints the start of a task.
 func (d *Display) TaskStart(module, task string) {
 	elapsed := time.Since(d.startTime).Round(time.Second)
-	fmt.Printf("[%s] %s > %s\n", elapsed, module, task)
+	fmt.Printf("  [%s] %s > %s ... ", elapsed, module, task)
 }
 
-// TaskComplete prints a completed task result and stores it for the final report.
 func (d *Display) TaskComplete(result models.TaskResult) {
 	d.completed++
 	d.results = append(d.results, result)
@@ -83,60 +82,99 @@ func (d *Display) TaskComplete(result models.TaskResult) {
 		percent = (d.completed * 100) / d.total
 	}
 
-	elapsed := time.Since(d.startTime).Round(time.Second)
-	statusColor := color.New(color.FgGreen)
+	bar := progressBar(percent, 25)
+
+	statusColor := color.New(color.FgGreen, color.Bold)
 	switch result.Status {
 	case models.TaskStatusSkipped:
-		statusColor = color.New(color.FgYellow)
+		statusColor = color.New(color.FgYellow, color.Bold)
 	case models.TaskStatusFailed:
-		statusColor = color.New(color.FgRed)
+		statusColor = color.New(color.FgRed, color.Bold)
 	}
 
 	statusText := statusColor.Sprint(string(result.Status))
-	fmt.Printf(
-		"  elapsed=%s progress=%d%% status=%s message=%s\n",
-		elapsed,
-		percent,
-		statusText,
-		result.Message,
-	)
+	fmt.Printf("%s\n", statusText)
+	if result.Status == models.TaskStatusFailed {
+		fmt.Printf("           error: %s\n", result.Message)
+	}
+	fmt.Printf("           %s %3d%% %s\n", bar, percent, statusText)
 }
 
-// ShowFinalReport prints the provisioning summary.
 func (d *Display) ShowFinalReport() {
 	fmt.Println()
-	color.New(color.FgCyan, color.Bold).Println("Provisioning Summary")
-	fmt.Println(strings.Repeat("-", 60))
+	green := color.New(color.FgGreen, color.Bold)
+	red := color.New(color.FgRed, color.Bold)
+	cyan := color.New(color.FgCyan, color.Bold)
+	cyan.Println("  ╔══════════════════════════════════════════════════════╗")
+	cyan.Println("  ║                    COMPLETED 100%                    ║")
+	cyan.Println("  ╚══════════════════════════════════════════════════════╝")
+	fmt.Println()
 
-	var errors, skipped int
-	for _, result := range d.results {
+	grey := color.New(color.Faint)
+	grey.Println("  ─── Summary ───")
+
+	var errCount, skipCount int
+	for _, r := range d.results {
+		if r.Name == "" {
+			continue
+		}
+		nameColor := color.New(color.FgWhite, color.Bold)
 		statusColor := color.New(color.FgGreen)
-		switch result.Status {
+		icon := "✓"
+		switch r.Status {
 		case models.TaskStatusSkipped:
 			statusColor = color.New(color.FgYellow)
-			skipped++
+			icon = "-"
+			skipCount++
 		case models.TaskStatusFailed:
 			statusColor = color.New(color.FgRed)
-			errors++
+			icon = "✗"
+			errCount++
 		}
-		fmt.Printf("%-28s %s\n", result.Name, statusColor.Sprint(string(result.Status)))
-		if result.Status == models.TaskStatusFailed && result.Err != nil {
-			fmt.Printf("  error: %s\n", result.Err.Error())
+		nameColor.Printf("  %s  %-30s", icon, r.Name)
+		statusText := statusColor.Sprintf("%s", r.Status)
+		// Align status text at column 42 (30 name + tab)
+		if len(r.Name) > 34 {
+			fmt.Printf("\t%s\n", statusText)
+		} else {
+			fmt.Printf("\t%s\n", statusText)
 		}
 	}
 
-	fmt.Println(strings.Repeat("-", 60))
-	fmt.Printf("Total Time:  %s\n", time.Since(d.startTime).Round(time.Second))
-	fmt.Printf("Errors:      %d\n", errors)
-	fmt.Printf("Skipped:     %d\n", skipped)
+	grey.Println()
+	grey.Println("  ─── Stats ───")
+	fmt.Printf("  %-25s:  %d/%d\n", "Total tasks", d.completed, d.total)
+	fmt.Printf("  %-25s:  %d\n", "Passed", (d.completed - errCount - skipCount))
+	fmt.Printf("  %-25s:  %d\n", "Skipped", skipCount)
+	errColor := green
+	if errCount > 0 {
+		errColor = red
+	}
+	errColor.Printf("  %-25s:  %d\n", "Failed", errCount)
+	fmt.Printf("  %-25s:  %s\n", "Finished in", time.Since(d.startTime).Round(time.Second))
+
+	fmt.Println()
+	if errCount == 0 {
+		green.Println("  ✓ All tasks completed successfully!")
+	} else {
+		fmt.Println()
+		red.Println("  ✗ Some tasks failed. Check the log for details.")
+	}
+	fmt.Println()
+	completed := color.New(color.FgGreen, color.Bold)
+	completed.Println(`     ________  ___  _____  __    __`)
+	completed.Println(`    /  _/ __ \/ _ \/ ___/ / /   / /`)
+	completed.Println(`   / // / / / // / __ \_/ /   / /  `)
+	completed.Println(` _/ / /_/ / __ \ /_/ / /___/ /___ `)
+	completed.Println(`/___/_____/_/ |_\____/_____/_____/ `)
+	completed.Println(`        C O M P L E T E D        `)
+	completed.Println()
 }
 
-// Results returns all recorded task results.
 func (d *Display) Results() []models.TaskResult {
 	return append([]models.TaskResult(nil), d.results...)
 }
 
-// HasFailures reports whether any task failed.
 func (d *Display) HasFailures() bool {
 	for _, result := range d.results {
 		if result.Status == models.TaskStatusFailed {
@@ -144,4 +182,18 @@ func (d *Display) HasFailures() bool {
 		}
 	}
 	return false
+}
+
+func progressBar(percent, width int) string {
+	filled := percent * width / 100
+	bar := "["
+	for i := 0; i < width; i++ {
+		if i < filled {
+			bar += "#"
+		} else {
+			bar += "-"
+		}
+	}
+	bar += "]"
+	return bar
 }

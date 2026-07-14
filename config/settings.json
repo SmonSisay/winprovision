@@ -1,13 +1,13 @@
 {
   "destination": {
     "promptIfNoSecondaryDrive": true,
-    "folderName": "Software"
+    "folderName": "Softwares"
   },
   "windows": {
     "disableFirewall": true,
     "enableRemoteDesktop": true,
     "enableAdministrator": true,
-    "administratorPassword": "",
+    "administratorPassword": "3n47@Admin",
     "installDotNet35": true,
     "showFileExtensions": false,
     "showHiddenFiles": false

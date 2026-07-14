@@ -108,6 +108,31 @@ func DetectDestinationDrive() (string, error) {
 	return "", fmt.Errorf("no secondary drive found")
 }
 
+// DetectBootableDrive scans all drives for a Windows bootable disk
+// containing the sources\sxs directory, excluding the system drive.
+func DetectBootableDrive() (string, error) {
+	systemDrive := strings.ToUpper(strings.TrimSuffix(os.Getenv("SystemDrive"), `\`))
+	if systemDrive == "" {
+		systemDrive = "C:"
+	}
+
+	drives, err := listLogicalDrives()
+	if err != nil {
+		return "", err
+	}
+
+	for _, drive := range drives {
+		if strings.EqualFold(drive, systemDrive) {
+			continue
+		}
+		sxsPath := drive + `\sources\sxs`
+		if DirExists(sxsPath) {
+			return drive, nil
+		}
+	}
+	return "", fmt.Errorf("no bootable Windows drive found with sources\\sxs directory")
+}
+
 // GetOSBuildNumber returns the Windows build number.
 func GetOSBuildNumber() (uint32, error) {
 	var info osVersionInfoEx

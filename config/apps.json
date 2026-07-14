@@ -2,7 +2,7 @@
   "applications": [
     {
       "name": "Google Chrome",
-      "installerPath": "Chrome/setup.exe",
+      "installerPath": "Chrome/ChromeSetup.exe",
       "silentArgs": "/silent /install",
       "version": "latest",
       "desktopShortcut": {
@@ -11,16 +11,12 @@
         "targetPath": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
       },
       "detection": {
-        "registry": {
-          "key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Google Chrome",
-          "valueName": "DisplayName"
-        },
         "executablePath": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
       }
     },
     {
       "name": "Mozilla Firefox",
-      "installerPath": "Firefox/setup.exe",
+      "installerPath": "Firefox/Firefox Installer.exe",
       "silentArgs": "/S",
       "version": "latest",
       "desktopShortcut": {
@@ -29,31 +25,26 @@
         "targetPath": "C:\\Program Files\\Mozilla Firefox\\firefox.exe"
       },
       "detection": {
-        "registry": {
-          "key": "HKLM\\SOFTWARE\\Mozilla\\Mozilla Firefox",
-          "valueName": "CurrentVersion"
-        },
         "executablePath": "C:\\Program Files\\Mozilla Firefox\\firefox.exe"
       }
     },
     {
       "name": "Microsoft Office",
       "installerPath": "MicrosoftOffice/setup.exe",
-      "silentArgs": "/configure configuration.xml",
+      "silentArgs": "/admin",
       "version": "latest",
       "desktopShortcut": {
-        "enabled": false
+        "enabled": true,
+        "name": "Microsoft Office",
+        "targetPath": "C:\\Program Files\\Microsoft Office\\root\\Office16\\WINWORD.EXE"
       },
       "detection": {
-        "registry": {
-          "key": "HKLM\\SOFTWARE\\Microsoft\\Office\\ClickToRun\\Configuration",
-          "valueName": "VersionToReport"
-        }
+        "executablePath": "C:\\Program Files\\Microsoft Office\\root\\Office16\\WINWORD.EXE"
       }
     },
     {
       "name": "Adobe Reader",
-      "installerPath": "AdobeReader/setup.exe",
+      "installerPath": "AdobeReader/Reader Setup.exe",
       "silentArgs": "/sAll /rs /msi EULA_ACCEPT=YES",
       "version": "latest",
       "desktopShortcut": {
@@ -62,29 +53,26 @@
         "targetPath": "C:\\Program Files\\Adobe\\Acrobat Reader DC\\Reader\\AcroRd32.exe"
       },
       "detection": {
-        "registry": {
-          "key": "HKLM\\SOFTWARE\\Adobe\\Acrobat Reader\\DC\\Installer",
-          "valueName": "DesktopVersion"
-        }
+        "executablePath": "C:\\Program Files\\Adobe\\Acrobat Reader DC\\Reader\\AcroRd32.exe"
       }
     },
     {
-      "name": "Skype",
+      "name": "Skype for Business",
       "installerPath": "Skype/SkypeSetup.exe",
-      "silentArgs": "/silent",
+      "silentArgs": "/quiet /norestart",
       "version": "latest",
       "desktopShortcut": {
         "enabled": true,
-        "name": "Skype",
-        "targetPath": "C:\\Program Files\\Microsoft\\Skype for Desktop\\Skype.exe"
+        "name": "Skype for Business",
+        "targetPath": "C:\\Program Files\\Microsoft Office\\root\\office16\\lync.exe"
       },
       "detection": {
-        "executablePath": "C:\\Program Files\\Microsoft\\Skype for Desktop\\Skype.exe"
+        "executablePath": "C:\\Program Files\\Microsoft Office\\root\\office16\\lync.exe"
       }
     },
     {
       "name": "Visual Geez",
-      "installerPath": "VisualGeez/setup.exe",
+      "installerPath": "VisualGeez/VisualGeezSetup.exe",
       "silentArgs": "/S",
       "version": "latest",
       "desktopShortcut": {
@@ -97,18 +85,17 @@
       }
     },
     {
-      "name": "Kaspersky",
-      "installerPath": "Kaspersky/kavwebscan.exe",
+      "name": "Kasperskey",
+      "installerPath": "Kasperskey/setup.exe",
       "silentArgs": "/s",
       "version": "latest",
       "desktopShortcut": {
-        "enabled": false
+        "enabled": true,
+        "name": "Kasperskey",
+        "targetPath": "C:\\Program Files (x86)\\Kaspersky Lab\\Kaspersky Endpoint Security\\avp.exe"
       },
       "detection": {
-        "registry": {
-          "key": "HKLM\\SOFTWARE\\KasperskyLab",
-          "valueName": ""
-        }
+        "installDir": "C:\\Program Files (x86)\\Kaspersky Lab"
       }
     }
   ]
