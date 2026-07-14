@@ -1,0 +1,39 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Go build artifacts
+Setup.exe
+ProvisionTool.exe
+*.test
+*.out
+
+# Go workspace
+vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Runtime artifacts
+logs/
+*.log
+
+# Secrets — never commit passwords or credentials
+.env
+*.env
+
+# Temporary files
+tmp/
+temp/
