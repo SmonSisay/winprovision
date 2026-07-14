@@ -37,3 +37,8 @@ logs/
 # Temporary files
 tmp/
 temp/
+
+# Dev scratch files
+plan.md
+test-out.txt
+test-err.txt
