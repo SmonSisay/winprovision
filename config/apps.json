@@ -1,0 +1,115 @@
+{
+  "applications": [
+    {
+      "name": "Google Chrome",
+      "installerPath": "Chrome/setup.exe",
+      "silentArgs": "/silent /install",
+      "version": "latest",
+      "desktopShortcut": {
+        "enabled": true,
+        "name": "Google Chrome",
+        "targetPath": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
+      },
+      "detection": {
+        "registry": {
+          "key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Google Chrome",
+          "valueName": "DisplayName"
+        },
+        "executablePath": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
+      }
+    },
+    {
+      "name": "Mozilla Firefox",
+      "installerPath": "Firefox/setup.exe",
+      "silentArgs": "/S",
+      "version": "latest",
+      "desktopShortcut": {
+        "enabled": true,
+        "name": "Firefox",
+        "targetPath": "C:\\Program Files\\Mozilla Firefox\\firefox.exe"
+      },
+      "detection": {
+        "registry": {
+          "key": "HKLM\\SOFTWARE\\Mozilla\\Mozilla Firefox",
+          "valueName": "CurrentVersion"
+        },
+        "executablePath": "C:\\Program Files\\Mozilla Firefox\\firefox.exe"
+      }
+    },
+    {
+      "name": "Microsoft Office",
+      "installerPath": "MicrosoftOffice/setup.exe",
+      "silentArgs": "/configure configuration.xml",
+      "version": "latest",
+      "desktopShortcut": {
+        "enabled": false
+      },
+      "detection": {
+        "registry": {
+          "key": "HKLM\\SOFTWARE\\Microsoft\\Office\\ClickToRun\\Configuration",
+          "valueName": "VersionToReport"
+        }
+      }
+    },
+    {
+      "name": "Adobe Reader",
+      "installerPath": "AdobeReader/setup.exe",
+      "silentArgs": "/sAll /rs /msi EULA_ACCEPT=YES",
+      "version": "latest",
+      "desktopShortcut": {
+        "enabled": true,
+        "name": "Adobe Acrobat Reader",
+        "targetPath": "C:\\Program Files\\Adobe\\Acrobat Reader DC\\Reader\\AcroRd32.exe"
+      },
+      "detection": {
+        "registry": {
+          "key": "HKLM\\SOFTWARE\\Adobe\\Acrobat Reader\\DC\\Installer",
+          "valueName": "DesktopVersion"
+        }
+      }
+    },
+    {
+      "name": "Skype",
+      "installerPath": "Skype/SkypeSetup.exe",
+      "silentArgs": "/silent",
+      "version": "latest",
+      "desktopShortcut": {
+        "enabled": true,
+        "name": "Skype",
+        "targetPath": "C:\\Program Files\\Microsoft\\Skype for Desktop\\Skype.exe"
+      },
+      "detection": {
+        "executablePath": "C:\\Program Files\\Microsoft\\Skype for Desktop\\Skype.exe"
+      }
+    },
+    {
+      "name": "Visual Geez",
+      "installerPath": "VisualGeez/setup.exe",
+      "silentArgs": "/S",
+      "version": "latest",
+      "desktopShortcut": {
+        "enabled": true,
+        "name": "Visual Geez",
+        "targetPath": "C:\\Program Files\\Visual Geez\\VisualGeez.exe"
+      },
+      "detection": {
+        "installDir": "C:\\Program Files\\Visual Geez"
+      }
+    },
+    {
+      "name": "Kaspersky",
+      "installerPath": "Kaspersky/kavwebscan.exe",
+      "silentArgs": "/s",
+      "version": "latest",
+      "desktopShortcut": {
+        "enabled": false
+      },
+      "detection": {
+        "registry": {
+          "key": "HKLM\\SOFTWARE\\KasperskyLab",
+          "valueName": ""
+        }
+      }
+    }
+  ]
+}

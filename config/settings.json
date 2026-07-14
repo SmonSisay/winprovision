@@ -1,0 +1,19 @@
+{
+  "destination": {
+    "promptIfNoSecondaryDrive": true,
+    "folderName": "Software"
+  },
+  "windows": {
+    "disableFirewall": true,
+    "enableRemoteDesktop": true,
+    "enableAdministrator": true,
+    "administratorPassword": "",
+    "installDotNet35": true,
+    "showFileExtensions": false,
+    "showHiddenFiles": false
+  },
+  "logging": {
+    "file": "logs/setup.log",
+    "level": "info"
+  }
+}
