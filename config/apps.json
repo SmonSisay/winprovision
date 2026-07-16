@@ -85,14 +85,12 @@
       }
     },
     {
-      "name": "Kasperskey",
+      "name": "Kaspersky",
       "installerPath": "Kaspersky Endpoint installer 12.3/Kaspersky Endpoint security installer 12.3 update - Copy.exe",
       "silentArgs": "/s",
       "version": "latest",
       "desktopShortcut": {
-        "enabled": true,
-        "name": "Kaspersky Endpoint Security",
-        "targetPath": "C:\\Program Files (x86)\\Kaspersky Lab\\Kaspersky Endpoint Security\\avp.exe"
+        "enabled": false
       },
       "detection": {
         "installDir": "C:\\Program Files (x86)\\Kaspersky Lab"
