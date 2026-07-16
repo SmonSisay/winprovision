@@ -77,27 +77,29 @@ func (d *Display) TaskComplete(result models.TaskResult) {
 	d.completed++
 	d.results = append(d.results, result)
 
-	percent := 0
-	if d.total > 0 {
-		percent = (d.completed * 100) / d.total
-	}
-
-	bar := progressBar(percent, 25)
-
 	statusColor := color.New(color.FgGreen, color.Bold)
+	taskPercent := 100
 	switch result.Status {
 	case models.TaskStatusSkipped:
 		statusColor = color.New(color.FgYellow, color.Bold)
+		taskPercent = 100
 	case models.TaskStatusFailed:
 		statusColor = color.New(color.FgRed, color.Bold)
+		taskPercent = 0
 	}
 
 	statusText := statusColor.Sprint(string(result.Status))
 	fmt.Printf("%s\n", statusText)
-	if result.Status == models.TaskStatusFailed {
-		fmt.Printf("           error: %s\n", result.Message)
+
+	if result.Status == models.TaskStatusSkipped && result.Message != "" {
+		fmt.Printf("           └─ %s\n", result.Message)
 	}
-	fmt.Printf("           %s %3d%% %s\n", bar, percent, statusText)
+	if result.Status == models.TaskStatusFailed {
+		fmt.Printf("           └─ %s\n", result.Message)
+	}
+
+	bar := progressBar(taskPercent, 25)
+	fmt.Printf("           %s %3d%% %s\n", bar, taskPercent, statusText)
 }
 
 func (d *Display) ShowFinalReport() {
@@ -105,8 +107,18 @@ func (d *Display) ShowFinalReport() {
 	green := color.New(color.FgGreen, color.Bold)
 	red := color.New(color.FgRed, color.Bold)
 	cyan := color.New(color.FgCyan, color.Bold)
+
+	completedAll := d.total
+	if d.completed < d.total {
+		completedAll = d.completed
+	}
+	overallPercent := 0
+	if d.total > 0 {
+		overallPercent = (completedAll * 100) / d.total
+	}
+
 	cyan.Println("  ╔══════════════════════════════════════════════════════╗")
-	cyan.Println("  ║                    COMPLETED 100%                    ║")
+	cyan.Printf("  ║                 COMPLETED  %3d%%                   ║\n", overallPercent)
 	cyan.Println("  ╚══════════════════════════════════════════════════════╝")
 	fmt.Println()
 
@@ -132,18 +144,18 @@ func (d *Display) ShowFinalReport() {
 			errCount++
 		}
 		nameColor.Printf("  %s  %-30s", icon, r.Name)
-		statusText := statusColor.Sprintf("%s", r.Status)
-		// Align status text at column 42 (30 name + tab)
-		if len(r.Name) > 34 {
-			fmt.Printf("\t%s\n", statusText)
-		} else {
-			fmt.Printf("\t%s\n", statusText)
+		statusColor.Printf("%s\n", r.Status)
+		if r.Status == models.TaskStatusFailed && r.Message != "" {
+			fmt.Printf("      └─ %s\n", r.Message)
+		}
+		if r.Status == models.TaskStatusSkipped && r.Message != "" {
+			fmt.Printf("      └─ %s\n", r.Message)
 		}
 	}
 
 	grey.Println()
 	grey.Println("  ─── Stats ───")
-	fmt.Printf("  %-25s:  %d/%d\n", "Total tasks", d.completed, d.total)
+	fmt.Printf("  %-25s:  %d/%d (%d%%)\n", "Total tasks", d.completed, d.total, overallPercent)
 	fmt.Printf("  %-25s:  %d\n", "Passed", (d.completed - errCount - skipCount))
 	fmt.Printf("  %-25s:  %d\n", "Skipped", skipCount)
 	errColor := green
@@ -161,14 +173,14 @@ func (d *Display) ShowFinalReport() {
 		red.Println("  ✗ Some tasks failed. Check the log for details.")
 	}
 	fmt.Println()
-	completed := color.New(color.FgGreen, color.Bold)
-	completed.Println(`     ________  ___  _____  __    __`)
-	completed.Println(`    /  _/ __ \/ _ \/ ___/ / /   / /`)
-	completed.Println(`   / // / / / // / __ \_/ /   / /  `)
-	completed.Println(` _/ / /_/ / __ \ /_/ / /___/ /___ `)
-	completed.Println(`/___/_____/_/ |_\____/_____/_____/ `)
-	completed.Println(`        C O M P L E T E D        `)
-	completed.Println()
+	completedArt := color.New(color.FgGreen, color.Bold)
+	completedArt.Println(`     ________  ___  _____  __    __`)
+	completedArt.Println(`    /  _/ __ \/ _ \/ ___/ / /   / /`)
+	completedArt.Println(`   / // / / / // / __ \_/ /   / /  `)
+	completedArt.Println(` _/ / /_/ / __ \ /_/ / /___/ /___ `)
+	completedArt.Println(`/___/_____/_/ |_\____/_____/_____/ `)
+	completedArt.Println(`        C O M P L E T E D        `)
+	completedArt.Println()
 }
 
 func (d *Display) Results() []models.TaskResult {
