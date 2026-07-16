@@ -83,7 +83,8 @@ func GetWindowsVersion() (string, error) {
 	return fmt.Sprintf("%s (Build %s)", productName, build), nil
 }
 
-// DetectDestinationDrive returns the first available non-system drive letter.
+// DetectDestinationDrive returns the first available non-system fixed drive
+// (internal hard drive, not USB removable).
 func DetectDestinationDrive() (string, error) {
 	systemDrive := strings.ToUpper(strings.TrimSuffix(os.Getenv("SystemDrive"), `\`))
 	if systemDrive == "" {
@@ -101,11 +102,11 @@ func DetectDestinationDrive() (string, error) {
 		}
 		root := drive + `\`
 		driveType := windows.GetDriveType(syscall.StringToUTF16Ptr(root))
-		if driveType == windows.DRIVE_FIXED || driveType == windows.DRIVE_REMOVABLE {
+		if driveType == windows.DRIVE_FIXED {
 			return drive, nil
 		}
 	}
-	return "", fmt.Errorf("no secondary drive found")
+	return "", fmt.Errorf("no secondary fixed drive found")
 }
 
 // DetectBootableDrive scans all drives for a Windows bootable disk
