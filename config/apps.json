@@ -2,7 +2,7 @@
   "applications": [
     {
       "name": "Google Chrome",
-      "installerPath": "Chrome/ChromeSetup.exe",
+      "installerPath": "Chrome/ChromeStandaloneSetup64.exe",
       "silentArgs": "/silent /install",
       "version": "latest",
       "desktopShortcut": {
@@ -16,7 +16,7 @@
     },
     {
       "name": "Mozilla Firefox",
-      "installerPath": "Firefox/Firefox Installer.exe",
+      "installerPath": "Firefox/Mozilla_Firefox_(32bit)_v82.0.3.exe",
       "silentArgs": "/S",
       "version": "latest",
       "desktopShortcut": {
@@ -31,48 +31,48 @@
     {
       "name": "Microsoft Office",
       "installerPath": "MicrosoftOffice/setup.exe",
-      "silentArgs": "/admin",
+      "silentArgs": "/config proplus.ww\\config.xml",
       "version": "latest",
       "desktopShortcut": {
         "enabled": true,
         "name": "Microsoft Office",
-        "targetPath": "C:\\Program Files\\Microsoft Office\\root\\Office16\\WINWORD.EXE"
+        "targetPath": "C:\\Program Files\\Microsoft Office\\Office15\\WINWORD.EXE"
       },
       "detection": {
-        "executablePath": "C:\\Program Files\\Microsoft Office\\root\\Office16\\WINWORD.EXE"
+        "executablePath": "C:\\Program Files\\Microsoft Office\\Office15\\WINWORD.EXE"
       }
     },
     {
       "name": "Adobe Reader",
-      "installerPath": "AdobeReader/Reader Setup.exe",
+      "installerPath": "AdobeReader/AdbeRdr11010_en_US.exe",
       "silentArgs": "/sAll /rs /msi EULA_ACCEPT=YES",
       "version": "latest",
       "desktopShortcut": {
         "enabled": true,
         "name": "Adobe Acrobat Reader",
-        "targetPath": "C:\\Program Files\\Adobe\\Acrobat Reader DC\\Reader\\AcroRd32.exe"
+        "targetPath": "C:\\Program Files (x86)\\Adobe\\Acrobat Reader DC\\Reader\\AcroRd32.exe"
       },
       "detection": {
-        "executablePath": "C:\\Program Files\\Adobe\\Acrobat Reader DC\\Reader\\AcroRd32.exe"
+        "executablePath": "C:\\Program Files (x86)\\Adobe\\Acrobat Reader DC\\Reader\\AcroRd32.exe"
       }
     },
     {
       "name": "Skype for Business",
-      "installerPath": "Skype/SkypeSetup.exe",
+      "installerPath": "Skype4Business/lyncentry_X64.exe",
       "silentArgs": "/quiet /norestart",
       "version": "latest",
       "desktopShortcut": {
         "enabled": true,
         "name": "Skype for Business",
-        "targetPath": "C:\\Program Files\\Microsoft Office\\root\\office16\\lync.exe"
+        "targetPath": "C:\\Program Files\\Microsoft Office\\Office15\\lync.exe"
       },
       "detection": {
-        "executablePath": "C:\\Program Files\\Microsoft Office\\root\\office16\\lync.exe"
+        "executablePath": "C:\\Program Files\\Microsoft Office\\Office15\\lync.exe"
       }
     },
     {
       "name": "Visual Geez",
-      "installerPath": "VisualGeez/VisualGeezSetup.exe",
+      "installerPath": "VisualGeez/setup.exe",
       "silentArgs": "/S",
       "version": "latest",
       "desktopShortcut": {
@@ -86,16 +86,28 @@
     },
     {
       "name": "Kasperskey",
-      "installerPath": "Kasperskey/setup.exe",
+      "installerPath": "Kaspersky Endpoint installer 12.3/Kaspersky Endpoint security installer 12.3 update - Copy.exe",
       "silentArgs": "/s",
       "version": "latest",
       "desktopShortcut": {
         "enabled": true,
-        "name": "Kasperskey",
+        "name": "Kaspersky Endpoint Security",
         "targetPath": "C:\\Program Files (x86)\\Kaspersky Lab\\Kaspersky Endpoint Security\\avp.exe"
       },
       "detection": {
         "installDir": "C:\\Program Files (x86)\\Kaspersky Lab"
+      }
+    },
+    {
+      "name": "FortiNAC Persistent Agent",
+      "installerPath": "FortiNAC/FortiNAC Persistent Agent New.msi",
+      "silentArgs": "/qn /norestart",
+      "version": "latest",
+      "desktopShortcut": {
+        "enabled": false
+      },
+      "detection": {
+        "installDir": "C:\\Program Files\\FortiNAC\\PersistentAgent"
       }
     }
   ]

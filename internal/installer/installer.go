@@ -114,8 +114,11 @@ func resolveInstallerPath(app models.AppDefinition, softwareRoot string) string 
 			continue
 		}
 		for _, e := range entries {
-			if !e.IsDir() && strings.EqualFold(filepath.Ext(e.Name()), ".exe") {
-				return filepath.Join(dir, e.Name())
+			if !e.IsDir() {
+				ext := strings.ToLower(filepath.Ext(e.Name()))
+				if ext == ".exe" || ext == ".msi" {
+					return filepath.Join(dir, e.Name())
+				}
 			}
 		}
 	}
@@ -124,10 +127,17 @@ func resolveInstallerPath(app models.AppDefinition, softwareRoot string) string 
 
 // runInstaller tries to run the installer with the given args.
 func runInstaller(ctx context.Context, exePath string, args []string) error {
-	cmd := exec.CommandContext(ctx, exePath, args...)
+	ext := strings.ToLower(filepath.Ext(exePath))
+	var cmd *exec.Cmd
+	if ext == ".msi" {
+		msiArgs := append([]string{"/i", exePath}, args...)
+		cmd = exec.CommandContext(ctx, "msiexec.exe", msiArgs...)
+	} else {
+		cmd = exec.CommandContext(ctx, exePath, args...)
+	}
 	cmd.Dir = filepath.Dir(exePath)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stdout = nil
+	cmd.Stderr = nil
 	return cmd.Run()
 }
 
@@ -259,8 +269,11 @@ func findInstallerExe(dir string) (string, error) {
 		return "", fmt.Errorf("read directory %s: %w", dir, err)
 	}
 	for _, e := range entries {
-		if !e.IsDir() && strings.EqualFold(filepath.Ext(e.Name()), ".exe") {
-			return filepath.Join(dir, e.Name()), nil
+		if !e.IsDir() {
+			ext := strings.ToLower(filepath.Ext(e.Name()))
+			if ext == ".exe" || ext == ".msi" {
+				return filepath.Join(dir, e.Name()), nil
+			}
 		}
 	}
 	return "", nil // no executable found
