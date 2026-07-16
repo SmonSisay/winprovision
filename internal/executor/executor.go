@@ -4,8 +4,10 @@ package executor
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"github.com/SmonSisay/winprovision/internal/config"
@@ -304,9 +306,17 @@ func resolveDestination(settings *models.Settings) (string, error) {
 		return drive + `\`, nil
 	}
 	if settings.Destination.PromptIfNoSecondaryDrive {
-		return utils.PromptDestinationFolder()
+		userPath, promptErr := utils.PromptDestinationFolder()
+		if promptErr == nil {
+			return userPath, nil
+		}
 	}
-	return "", fmt.Errorf("no secondary drive found and prompting is disabled")
+	systemDrive := os.Getenv("SystemDrive")
+	if systemDrive == "" {
+		systemDrive = "C:"
+	}
+	systemRoot := strings.TrimSuffix(systemDrive, `\`) + `\`
+	return systemRoot, fmt.Errorf("no secondary drive found, falling back to %s", systemRoot)
 }
 
 // taskPlan captures the planned tasks for both progress counting and summary display.
