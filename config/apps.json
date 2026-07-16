@@ -34,9 +34,7 @@
       "silentArgs": "/config proplus.ww\\config.xml",
       "version": "latest",
       "desktopShortcut": {
-        "enabled": true,
-        "name": "Microsoft Office",
-        "targetPath": "C:\\Program Files\\Microsoft Office\\Office15\\WINWORD.EXE"
+        "enabled": false
       },
       "detection": {
         "executablePath": "C:\\Program Files\\Microsoft Office\\Office15\\WINWORD.EXE"
@@ -48,9 +46,7 @@
       "silentArgs": "/sAll /rs /msi EULA_ACCEPT=YES",
       "version": "latest",
       "desktopShortcut": {
-        "enabled": true,
-        "name": "Adobe Acrobat Reader",
-        "targetPath": "C:\\Program Files (x86)\\Adobe\\Acrobat Reader DC\\Reader\\AcroRd32.exe"
+        "enabled": false
       },
       "detection": {
         "executablePath": "C:\\Program Files (x86)\\Adobe\\Acrobat Reader DC\\Reader\\AcroRd32.exe"
@@ -62,9 +58,7 @@
       "silentArgs": "/quiet /norestart",
       "version": "latest",
       "desktopShortcut": {
-        "enabled": true,
-        "name": "Skype for Business",
-        "targetPath": "C:\\Program Files\\Microsoft Office\\Office15\\lync.exe"
+        "enabled": false
       },
       "detection": {
         "executablePath": "C:\\Program Files\\Microsoft Office\\Office15\\lync.exe"
@@ -73,7 +67,7 @@
     {
       "name": "Visual Geez",
       "installerPath": "VisualGeez/setup.exe",
-      "silentArgs": "/S",
+      "silentArgs": "/s",
       "version": "latest",
       "desktopShortcut": {
         "enabled": true,

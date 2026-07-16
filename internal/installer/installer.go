@@ -136,8 +136,8 @@ func runInstaller(ctx context.Context, exePath string, args []string) error {
 		cmd = exec.CommandContext(ctx, exePath, args...)
 	}
 	cmd.Dir = filepath.Dir(exePath)
-	cmd.Stdout = nil
-	cmd.Stderr = nil
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 	return cmd.Run()
 }
 

@@ -181,6 +181,20 @@ func (d *Display) ShowFinalReport() {
 	completedArt.Println(`/___/_____/_/ |_\____/_____/_____/ `)
 	completedArt.Println(`        C O M P L E T E D        `)
 	completedArt.Println()
+	info := color.New(color.FgCyan, color.Bold)
+	info.Println("  ─────────────────────────────────────────────")
+	info.Println("  Everything is done!")
+	info.Println()
+	info.Println("  • Make sure to activate Kaspersky")
+	info.Println("  • Run the slave for that specific branch")
+	info.Println("  • Finally, make sure to add to the domain")
+	info.Println()
+	info.Println("  Enjoy your day!")
+	info.Println("  ─────────────────────────────────────────────")
+	fmt.Println()
+
+	fmt.Print("  Press Enter to close this window...")
+	fmt.Scanln()
 }
 
 func (d *Display) Results() []models.TaskResult {
