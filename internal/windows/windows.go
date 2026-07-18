@@ -57,6 +57,7 @@ func DisableFirewall(ctx context.Context) models.TaskResult {
 }
 
 // EnableRemoteDesktop enables Remote Desktop when not already enabled.
+// It also disables NLA (Network Level Authentication) and enables Remote Assistance.
 func EnableRemoteDesktop(ctx context.Context) models.TaskResult {
 	start := time.Now()
 	result := models.TaskResult{
@@ -73,9 +74,31 @@ func EnableRemoteDesktop(ctx context.Context) models.TaskResult {
 		return result
 	}
 
+	// Allow remote connections (fDenyTSConnections = 0)
 	if err := winreg.SetDWORD(rdpKey, "fDenyTSConnections", 0); err != nil {
 		result.Status = models.TaskStatusFailed
 		result.Message = "Failed to update RDP registry setting"
+		result.Err = err
+		result.Duration = time.Since(start)
+		return result
+	}
+
+	// Disable NLA — uncheck "Allow connections only from computers running
+	// Remote Desktop with Network Level Authentication"
+	const rdpTcpKey = `HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp`
+	if err := winreg.SetDWORD(rdpTcpKey, "UserAuthentication", 0); err != nil {
+		result.Status = models.TaskStatusFailed
+		result.Message = "Failed to disable Network Level Authentication"
+		result.Err = err
+		result.Duration = time.Since(start)
+		return result
+	}
+
+	// Enable Remote Assistance — check "Allow Remote Assistance connections"
+	const raKey = `HKLM\SYSTEM\CurrentControlSet\Control\Remote Assistance`
+	if err := winreg.SetDWORD(raKey, "fAllowToGetHelp", 1); err != nil {
+		result.Status = models.TaskStatusFailed
+		result.Message = "Failed to enable Remote Assistance"
 		result.Err = err
 		result.Duration = time.Since(start)
 		return result
