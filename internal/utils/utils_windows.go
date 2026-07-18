@@ -164,9 +164,13 @@ func DetectBootableDrive() (string, error) {
 		systemDrive = "C:"
 	}
 
+	fmt.Println()
+	fmt.Println("  [detect] Scanning drives for Windows installation media...")
+
 	// Strategy 1: enumerate all volumes including letterless ones
 	volumes, err := enumerateVolumes()
 	if err == nil {
+		fmt.Printf("  [detect] Found %d volumes via volume enumeration\n", len(volumes))
 		for _, vol := range volumes {
 			if vol.driveLetter != "" && strings.EqualFold(vol.driveLetter, systemDrive) {
 				continue
@@ -179,26 +183,38 @@ func DetectBootableDrive() (string, error) {
 				continue
 			}
 			sxsPath := drive + `\sources\sxs`
+			fmt.Printf("  [detect] Checking %s ...", sxsPath)
 			if DirExists(sxsPath) {
+				fmt.Println(" FOUND")
 				return drive, nil
 			}
+			fmt.Println(" not found")
 		}
+	} else {
+		fmt.Printf("  [detect] Volume enumeration failed: %v\n", err)
 	}
 
 	// Strategy 2: legacy drive enumeration
 	drives, err := listLogicalDrives()
 	if err == nil {
+		fmt.Printf("  [detect] Found %d logical drives\n", len(drives))
 		for _, drive := range drives {
 			if strings.EqualFold(drive, systemDrive) {
 				continue
 			}
 			sxsPath := drive + `\sources\sxs`
+			fmt.Printf("  [detect] Checking %s ...", sxsPath)
 			if DirExists(sxsPath) {
+				fmt.Println(" FOUND")
 				return drive, nil
 			}
+			fmt.Println(" not found")
 		}
+	} else {
+		fmt.Printf("  [detect] Logical drive enumeration failed: %v\n", err)
 	}
 
+	fmt.Println("  [detect] Bootable media not found automatically")
 	return "", fmt.Errorf("no bootable Windows drive found with sources\\sxs directory")
 }
 
