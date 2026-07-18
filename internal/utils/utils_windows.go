@@ -90,18 +90,45 @@ func GetWindowsVersion() (string, error) {
 }
 
 // DetectDestinationDrive returns the first available non-system fixed drive
-// (internal hard drive, not USB removable).
+// (internal hard drive, not USB removable). It enumerates all volumes including
+// those without drive letters, mounting letterless ones temporarily.
 func DetectDestinationDrive() (string, error) {
 	systemDrive := strings.ToUpper(strings.TrimSuffix(os.Getenv("SystemDrive"), `\`))
 	if systemDrive == "" {
 		systemDrive = "C:"
 	}
 
+	volumes, err := enumerateVolumes()
+	if err != nil {
+		// Fallback to legacy method
+		return detectDestinationLegacy(systemDrive)
+	}
+
+	for _, vol := range volumes {
+		if vol.driveLetter != "" && strings.EqualFold(vol.driveLetter, systemDrive) {
+			continue
+		}
+		drive := vol.driveLetter
+		if drive == "" {
+			drive = mountVolumeTemporarily(vol.name)
+		}
+		if drive == "" {
+			continue
+		}
+		root := drive + `\`
+		driveType := windows.GetDriveType(syscall.StringToUTF16Ptr(root))
+		if driveType == windows.DRIVE_FIXED {
+			return drive, nil
+		}
+	}
+	return detectDestinationLegacy(systemDrive)
+}
+
+func detectDestinationLegacy(systemDrive string) (string, error) {
 	drives, err := listLogicalDrives()
 	if err != nil {
 		return "", err
 	}
-
 	for _, drive := range drives {
 		if strings.EqualFold(drive, systemDrive) {
 			continue
@@ -115,19 +142,44 @@ func DetectDestinationDrive() (string, error) {
 	return "", fmt.Errorf("no secondary fixed drive found")
 }
 
-// DetectBootableDrive scans all drives for a Windows bootable disk
+// DetectBootableDrive scans all volumes for a Windows bootable disk
 // containing the sources\sxs directory, excluding the system drive.
+// It enumerates all volumes including those without drive letters.
 func DetectBootableDrive() (string, error) {
 	systemDrive := strings.ToUpper(strings.TrimSuffix(os.Getenv("SystemDrive"), `\`))
 	if systemDrive == "" {
 		systemDrive = "C:"
 	}
 
+	volumes, err := enumerateVolumes()
+	if err != nil {
+		return detectBootableLegacy(systemDrive)
+	}
+
+	for _, vol := range volumes {
+		if vol.driveLetter != "" && strings.EqualFold(vol.driveLetter, systemDrive) {
+			continue
+		}
+		drive := vol.driveLetter
+		if drive == "" {
+			drive = mountVolumeTemporarily(vol.name)
+		}
+		if drive == "" {
+			continue
+		}
+		sxsPath := drive + `\sources\sxs`
+		if DirExists(sxsPath) {
+			return drive, nil
+		}
+	}
+	return detectBootableLegacy(systemDrive)
+}
+
+func detectBootableLegacy(systemDrive string) (string, error) {
 	drives, err := listLogicalDrives()
 	if err != nil {
 		return "", err
 	}
-
 	for _, drive := range drives {
 		if strings.EqualFold(drive, systemDrive) {
 			continue
@@ -191,4 +243,91 @@ func listLogicalDrives() ([]string, error) {
 		drives = append(drives, strings.TrimSuffix(part, `\`))
 	}
 	return drives, nil
+}
+
+// volumeInfo holds a volume GUID and its assigned drive letter (if any).
+type volumeInfo struct {
+	name        string // \\?\Volume{GUID}\ format
+	driveLetter string // e.g. "D:" or "" if unmounted
+}
+
+// enumerateVolumes uses FindFirstVolume/FindNextVolume to list ALL volumes
+// on the system, including those without drive letters.
+func enumerateVolumes() ([]volumeInfo, error) {
+	var volumes []volumeInfo
+	var volName [windows.MAX_PATH + 1]uint16
+
+	handle, err := windows.FindFirstVolume(&volName[0], uint32(len(volName)))
+	if err != nil {
+		return nil, fmt.Errorf("find first volume: %w", err)
+	}
+	defer windows.FindVolumeClose(handle)
+
+	for {
+		vol := windows.UTF16ToString(volName[:])
+		vi := volumeInfo{name: vol}
+
+		// Get drive letters for this volume
+		var pathNames [windows.MAX_PATH + 1]uint16
+		err := windows.GetVolumePathNamesForVolumeName(
+			&volName[0], &pathNames[0], uint32(len(pathNames)), nil,
+		)
+		if err == nil {
+			paths := windows.UTF16ToString(pathNames[:])
+			for _, p := range strings.Split(paths, "\x00") {
+				p = strings.TrimSpace(p)
+				if p == "" {
+					continue
+				}
+				drive := strings.TrimSuffix(p, `\`)
+				if len(drive) == 2 && drive[1] == ':' {
+					vi.driveLetter = drive
+					break
+				}
+			}
+		}
+
+		volumes = append(volumes, vi)
+
+		err = windows.FindNextVolume(handle, &volName[0], uint32(len(volName)))
+		if err != nil {
+			break
+		}
+	}
+	return volumes, nil
+}
+
+// mountVolumeTemporarily assigns a free drive letter to a volume.
+// Returns the drive letter (e.g. "Z:") or "" on failure.
+func mountVolumeTemporarily(volName string) string {
+	freeLetter := findFreeDriveLetter()
+	if freeLetter == "" {
+		return ""
+	}
+	mountPoint := freeLetter + `:\`
+	err := windows.SetVolumeMountPoint(
+		windows.StringToUTF16Ptr(mountPoint),
+		windows.StringToUTF16Ptr(volName),
+	)
+	if err != nil {
+		return ""
+	}
+	return freeLetter + ":"
+}
+
+// findFreeDriveLetter returns a drive letter not currently in use.
+func findFreeDriveLetter() string {
+	used := make(map[byte]bool)
+	drives, _ := listLogicalDrives()
+	for _, d := range drives {
+		if len(d) == 2 {
+			used[d[0]] = true
+		}
+	}
+	for _, letter := range []byte{'Z', 'Y', 'X', 'W', 'V', 'U', 'T', 'S', 'R', 'Q', 'P', 'O', 'N', 'M', 'L', 'K', 'J', 'I', 'H', 'G', 'F', 'E', 'D', 'B', 'A'} {
+		if !used[letter] {
+			return string(letter)
+		}
+	}
+	return ""
 }
