@@ -81,7 +81,20 @@ func PromptDestinationFolder(folderName string) (string, error) {
 // PromptBootableDrive asks the user to enter the bootable flash drive letter or full path.
 func PromptBootableDrive() (string, error) {
 	reader := bufio.NewReader(os.Stdin)
-	fmt.Print("Bootable flash not detected. Enter drive letter (e.g. D:) or full path to sources\\sxs: ")
+
+	fmt.Println()
+	fmt.Println("  ─── Bootable Flash Drive ───")
+	fmt.Println()
+	fmt.Println("  Windows installation media not detected.")
+	fmt.Println("  Enter the drive letter or path to the sources\\sxs folder:")
+	fmt.Println()
+	fmt.Println("  Examples:")
+	fmt.Println("    D:")
+	fmt.Println("    E:")
+	fmt.Println("    D:\\sources\\sxs")
+	fmt.Println()
+	fmt.Print("  Enter path: ")
+
 	line, err := reader.ReadString('\n')
 	if err != nil {
 		return "", fmt.Errorf("read bootable drive: %w", err)
