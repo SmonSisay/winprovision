@@ -42,6 +42,7 @@ type WindowsSettings struct {
 	EnableAdministrator   bool   `json:"enableAdministrator"`
 	AdministratorPassword string `json:"administratorPassword"`
 	InstallDotNet35       bool   `json:"installDotNet35"`
+	DisableWindowsUpdate  bool   `json:"disableWindowsUpdate"`
 	ShowFileExtensions    bool   `json:"showFileExtensions"`
 	ShowHiddenFiles       bool   `json:"showHiddenFiles"`
 }

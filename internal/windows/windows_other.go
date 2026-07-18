@@ -40,6 +40,11 @@ func ShowHiddenFiles() models.TaskResult {
 	return failedResult("Show Hidden Files", "windows.explorer", "explorer configuration is only supported on Windows")
 }
 
+// DisableWindowsUpdate sets the Windows Update service to manual start.
+func DisableWindowsUpdate(ctx context.Context) models.TaskResult {
+	return failedResult("Windows Update", "windows.update", "windows update configuration is only supported on Windows")
+}
+
 func failedResult(name, module, message string) models.TaskResult {
 	return models.TaskResult{
 		Name:     name,

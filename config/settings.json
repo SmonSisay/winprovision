@@ -9,6 +9,7 @@
     "enableAdministrator": true,
     "administratorPassword": "Enat@3n47#2026",
     "installDotNet35": true,
+    "disableWindowsUpdate": true,
     "showFileExtensions": false,
     "showHiddenFiles": false
   },

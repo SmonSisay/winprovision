@@ -208,6 +208,48 @@ func SetAdministratorPassword(_ context.Context, password string) models.TaskRes
 	return result
 }
 
+// DisableWindowsUpdate sets the Windows Update service to manual start.
+func DisableWindowsUpdate(ctx context.Context) models.TaskResult {
+	start := time.Now()
+	result := models.TaskResult{
+		Name:   "Windows Update",
+		Module: "windows.update",
+	}
+
+	// Check current startup type: 2=Automatic, 3=Manual, 4=Disabled
+	const svcKey = `HKLM\SYSTEM\CurrentControlSet\Services\wuauserv`
+	current, err := winreg.GetDWORD(svcKey, "Start")
+	if err == nil && current == 3 {
+		result.Status = models.TaskStatusSkipped
+		result.Message = "Windows Update already set to manual"
+		result.Duration = time.Since(start)
+		return result
+	}
+
+	// Set startup type to Manual (3)
+	if err := winreg.SetDWORD(svcKey, "Start", 3); err != nil {
+		result.Status = models.TaskStatusFailed
+		result.Message = "Failed to change Windows Update startup type"
+		result.Err = err
+		result.Duration = time.Since(start)
+		return result
+	}
+
+	// Stop the service if running
+	if out, err := exec.CommandContext(ctx, "net", "stop", "wuauserv").CombinedOutput(); err != nil {
+		outStr := strings.ToLower(string(out))
+		if !strings.Contains(outStr, "not started") {
+			// Ignore — service may already be stopped
+			_ = outStr
+		}
+	}
+
+	result.Status = models.TaskStatusSuccess
+	result.Message = "Windows Update set to manual start"
+	result.Duration = time.Since(start)
+	return result
+}
+
 // ShowFileExtensions configures Explorer to show file extensions.
 func ShowFileExtensions() models.TaskResult {
 	start := time.Now()

@@ -229,6 +229,11 @@ func runWindowsTasks(ctx context.Context, settings *models.Settings, runTask fun
 			return winconfig.EnableAdministrator(ctx)
 		})
 	}
+	if settings.Windows.DisableWindowsUpdate {
+		runTask("windows", "Disable Windows Update", func() models.TaskResult {
+			return winconfig.DisableWindowsUpdate(ctx)
+		})
+	}
 	if settings.Windows.ShowFileExtensions {
 		runTask("windows", "Show File Extensions", func() models.TaskResult {
 			return winconfig.ShowFileExtensions()
@@ -438,6 +443,12 @@ func buildTaskPlan(settings *models.Settings, apps []models.AppDefinition) *task
 	if settings.Windows.InstallDotNet35 {
 		plan.actions = append(plan.actions, taskPlanEntry{
 			summary: "Install .NET Framework 3.5",
+			count:   1,
+		})
+	}
+	if settings.Windows.DisableWindowsUpdate {
+		plan.actions = append(plan.actions, taskPlanEntry{
+			summary: "Disable Windows Update",
 			count:   1,
 		})
 	}
