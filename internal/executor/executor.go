@@ -4,7 +4,6 @@ package executor
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 	"runtime/debug"
 	"strings"
@@ -352,22 +351,16 @@ func runDiscoveryPhase(
 }
 
 func resolveDestination(settings *models.Settings) (string, error) {
-	drive, err := utils.DetectDestinationDrive()
-	if err == nil {
-		return drive + `\`, nil
+	folderName := settings.Destination.FolderName
+	if folderName == "" {
+		folderName = "Softwares"
 	}
-	if settings.Destination.PromptIfNoSecondaryDrive {
-		userPath, promptErr := utils.PromptDestinationFolder()
-		if promptErr == nil {
-			return userPath, nil
-		}
+
+	userPath, promptErr := utils.PromptDestinationFolder(folderName)
+	if promptErr != nil {
+		return "", fmt.Errorf("destination folder: %w", promptErr)
 	}
-	systemDrive := os.Getenv("SystemDrive")
-	if systemDrive == "" {
-		systemDrive = "C:"
-	}
-	systemRoot := strings.TrimSuffix(systemDrive, `\`) + `\`
-	return systemRoot, fmt.Errorf("no secondary drive found, falling back to %s", systemRoot)
+	return userPath, nil
 }
 
 // taskPlan captures the planned tasks for both progress counting and summary display.

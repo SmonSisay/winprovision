@@ -41,9 +41,22 @@ func GetLoggedInUser() (string, error) {
 }
 
 // PromptDestinationFolder asks the user to enter a destination folder path.
-func PromptDestinationFolder() (string, error) {
+// It displays a formatted guide with examples to help the user.
+func PromptDestinationFolder(folderName string) (string, error) {
 	reader := bufio.NewReader(os.Stdin)
-	fmt.Print("No secondary drive found. Enter destination folder path: ")
+
+	fmt.Println()
+	fmt.Println("  ─── Destination Folder ───")
+	fmt.Println()
+	fmt.Println("  Where should the software files be copied to?")
+	fmt.Println()
+	fmt.Println("  Examples:")
+	fmt.Printf("    D:\\%s\n", folderName)
+	fmt.Printf("    E:\\%s\n", folderName)
+	fmt.Printf("    D:\\Work\\%s\n", folderName)
+	fmt.Println()
+	fmt.Print("  Enter full path: ")
+
 	line, err := reader.ReadString('\n')
 	if err != nil {
 		return "", fmt.Errorf("read destination folder: %w", err)
@@ -52,7 +65,17 @@ func PromptDestinationFolder() (string, error) {
 	if path == "" {
 		return "", fmt.Errorf("destination folder cannot be empty")
 	}
-	return filepath.Clean(path), nil
+
+	path = filepath.Clean(path)
+	if !IsAbsoluteWindowsPath(path) {
+		return "", fmt.Errorf("please enter a full path (e.g. D:\\%s)", folderName)
+	}
+
+	if !DirExists(filepath.Dir(path)) {
+		return "", fmt.Errorf("parent directory does not exist: %s", filepath.Dir(path))
+	}
+
+	return path, nil
 }
 
 // PromptBootableDrive asks the user to enter the bootable flash drive letter or full path.
