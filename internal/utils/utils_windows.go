@@ -5,6 +5,7 @@ package utils
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"syscall"
 	"unsafe"
@@ -76,6 +77,11 @@ func GetWindowsVersion() (string, error) {
 		build, _, _ = k.GetStringValue("CurrentBuildNumber")
 	}
 	display, _, _ := k.GetStringValue("DisplayVersion")
+
+	// Windows 11 builds start at 22000; registry may still say "Windows 10"
+	if buildNum, parseErr := strconv.Atoi(build); parseErr == nil && buildNum >= 22000 {
+		productName = strings.Replace(productName, "Windows 10", "Windows 11", 1)
+	}
 
 	if display != "" {
 		return fmt.Sprintf("%s %s (Build %s)", productName, display, build), nil
