@@ -27,16 +27,15 @@ func NewDisplay(totalTasks int) *Display {
 
 func (d *Display) ShowBanner(version, windowsVersion, username string) {
 	green := color.New(color.FgGreen, color.Bold)
-	white := color.New(color.FgWhite, color.Bold)
 
 	green.Println("  ╔══════════════════════════════════════════════════════╗")
 	green.Println("  ║      Welcome to Windows Provision Tool              ║")
 	green.Println("  ╚══════════════════════════════════════════════════════╝")
-	white.Printf("  Version        :  ")
+	green.Printf("  Version        :  ")
 	fmt.Println(version)
-	white.Printf("  Windows        :  ")
+	green.Printf("  Windows        :  ")
 	fmt.Println(windowsVersion)
-	white.Printf("  User           :  ")
+	green.Printf("  User           :  ")
 	fmt.Println(username)
 	fmt.Println()
 }

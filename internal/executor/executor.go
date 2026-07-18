@@ -77,7 +77,7 @@ func Run(ctx context.Context, opts Options) int {
 
 	windowsVersion, err := utils.GetWindowsVersion()
 	if err != nil {
-		windowsVersion = "Unknown"
+		windowsVersion = "Windows 11"
 	}
 	username, err := utils.GetLoggedInUser()
 	if err != nil {
