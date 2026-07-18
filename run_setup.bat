@@ -15,8 +15,8 @@ echo ===================================================
 echo  Windows Provisioning Tool
 echo ===================================================
 echo.
-echo Running SudoS.exe...
-SudoS.exe
+echo Running Setup.exe...
+Setup.exe
 echo.
 echo ===================================================
 echo  Provisioning complete.

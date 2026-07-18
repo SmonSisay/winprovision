@@ -87,30 +87,33 @@ func EnableDotNet35(ctx context.Context, sxsPath string) models.TaskResult {
 		if exitCode == dismRebootRequired {
 			result.Status = models.TaskStatusSuccess
 			result.Message = fmt.Sprintf(
-				".NET Framework 3.5 enabled — reboot required (exit=%d, duration=%s)",
+				".NET Framework 3.5 enabled — reboot required (exit=%d, duration=%s, source=%s)",
 				exitCode,
 				duration.Round(time.Millisecond),
+				cleanPath,
 			)
 			result.Duration = duration
 			return result
 		}
 		result.Status = models.TaskStatusFailed
 		result.Message = fmt.Sprintf(
-			"DISM failed (exit=%d, duration=%s): %s",
+			"DISM failed (exit=%d, duration=%s, source=%s): %s",
 			exitCode,
 			duration.Round(time.Millisecond),
+			cleanPath,
 			strings.TrimSpace(stderr.String()),
 		)
-		result.Err = fmt.Errorf("enable NetFx3: %w; stdout=%s; stderr=%s", runErr, stdout.String(), stderr.String())
+		result.Err = fmt.Errorf("enable NetFx3 (source=%s): %w; stdout=%s; stderr=%s", cleanPath, runErr, stdout.String(), stderr.String())
 		result.Duration = duration
 		return result
 	}
 
 	result.Status = models.TaskStatusSuccess
 	result.Message = fmt.Sprintf(
-		".NET Framework 3.5 enabled (exit=%d, duration=%s)",
+		".NET Framework 3.5 enabled (exit=%d, duration=%s, source=%s)",
 		exitCode,
 		duration.Round(time.Millisecond),
+		cleanPath,
 	)
 	result.Duration = duration
 	return result

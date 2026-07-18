@@ -139,7 +139,7 @@ func Run(ctx context.Context, opts Options) int {
 	}
 
 	runWindowsTasks(ctx, settings, runTask)
-	runDotNetTask(ctx, settings, rootDir, runTask)
+	runDotNetTask(ctx, settings, rootDir, logger, runTask)
 	runInstallerTasks(ctx, apps, softwareDestination, runTask)
 	runDiscoveryPhase(ctx, softwareDestination, apps, display, logger)
 
@@ -248,12 +248,14 @@ func runWindowsTasks(ctx context.Context, settings *models.Settings, runTask fun
 // runDotNetTask enables .NET Framework 3.5 if configured.
 // It first attempts to find a bootable Windows disk with sources\sxs.
 // If not found, it prompts the user to provide the path manually.
-func runDotNetTask(ctx context.Context, settings *models.Settings, rootDir string, runTask func(string, string, func() models.TaskResult) models.TaskResult) {
+func runDotNetTask(ctx context.Context, settings *models.Settings, rootDir string, logger logging.Logger, runTask func(string, string, func() models.TaskResult) models.TaskResult) {
 	if settings.Windows.InstallDotNet35 {
+		dismLog := logger.WithModule("dism")
 		runTask("dism", "Enable .NET Framework 3.5", func() models.TaskResult {
-			sxsPath := resolveSxSPath()
+			sxsPath := resolveSxSPath(dismLog)
 			if sxsPath == "" {
 				start := time.Now()
+				dismLog.Warn("resolve-sxs", "FAILED", "Bootable flash not detected and no path provided", 0, nil)
 				return models.TaskResult{
 					Name:     ".NET Framework 3.5",
 					Module:   "dism",
@@ -263,6 +265,7 @@ func runDotNetTask(ctx context.Context, settings *models.Settings, rootDir strin
 					Err:      fmt.Errorf("no valid sources\\sxs path provided"),
 				}
 			}
+			dismLog.Info("resolve-sxs", "SUCCESS", fmt.Sprintf("Using source path: %s", sxsPath), 0, nil)
 			return dism.EnableDotNet35(ctx, sxsPath)
 		})
 	}
@@ -270,13 +273,17 @@ func runDotNetTask(ctx context.Context, settings *models.Settings, rootDir strin
 
 // resolveSxSPath tries to find the sources\sxs directory automatically,
 // then falls back to asking the user. Returns the validated path or empty string.
-func resolveSxSPath() string {
+func resolveSxSPath(logger logging.Logger) string {
 	bootDrive, err := utils.DetectBootableDrive()
 	if err == nil {
 		sxsPath := bootDrive + `\sources\sxs`
 		if utils.DirExists(sxsPath) {
+			logger.Info("resolve-sxs", "SUCCESS", fmt.Sprintf("Auto-detected bootable drive: %s (path: %s)", bootDrive, sxsPath), 0, nil)
 			return sxsPath
 		}
+		logger.Warn("resolve-sxs", "WARNING", fmt.Sprintf("Drive %s detected but %s does not exist", bootDrive, sxsPath), 0, nil)
+	} else {
+		logger.Warn("resolve-sxs", "WARNING", fmt.Sprintf("Auto-detection failed: %v", err), 0, nil)
 	}
 
 	input, err := utils.PromptBootableDrive()
@@ -300,9 +307,11 @@ func resolveSxSPath() string {
 
 	input = filepath.Clean(input)
 	if utils.DirExists(input) {
+		logger.Info("resolve-sxs", "SUCCESS", fmt.Sprintf("User-provided path: %s", input), 0, nil)
 		return input
 	}
 
+	logger.Warn("resolve-sxs", "FAILED", fmt.Sprintf("Path does not exist: %s", input), 0, nil)
 	fmt.Printf("ERROR: Path does not exist or is not accessible: %s\n", input)
 	return ""
 }

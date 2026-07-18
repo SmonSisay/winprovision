@@ -5,6 +5,7 @@ package utils
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -156,7 +157,7 @@ func DetectDestinationDrive() (string, error) {
 }
 
 // DetectBootableDrive scans all volumes for a Windows bootable disk
-// containing the sources\sxs directory, excluding the system drive.
+// containing the sources\sxs directory with .cab files, excluding the system drive.
 // It enumerates all volumes including those without drive letters.
 func DetectBootableDrive() (string, error) {
 	systemDrive := strings.ToUpper(strings.TrimSuffix(os.Getenv("SystemDrive"), `\`))
@@ -184,11 +185,11 @@ func DetectBootableDrive() (string, error) {
 			}
 			sxsPath := drive + `\sources\sxs`
 			fmt.Printf("  [detect] Checking %s ...", sxsPath)
-			if DirExists(sxsPath) {
-				fmt.Println(" FOUND")
+			if validateSxSDirectory(sxsPath) {
+				fmt.Println(" FOUND (valid)")
 				return drive, nil
 			}
-			fmt.Println(" not found")
+			fmt.Println(" not found or invalid")
 		}
 	} else {
 		fmt.Printf("  [detect] Volume enumeration failed: %v\n", err)
@@ -204,18 +205,33 @@ func DetectBootableDrive() (string, error) {
 			}
 			sxsPath := drive + `\sources\sxs`
 			fmt.Printf("  [detect] Checking %s ...", sxsPath)
-			if DirExists(sxsPath) {
-				fmt.Println(" FOUND")
+			if validateSxSDirectory(sxsPath) {
+				fmt.Println(" FOUND (valid)")
 				return drive, nil
 			}
-			fmt.Println(" not found")
+			fmt.Println(" not found or invalid")
 		}
 	} else {
 		fmt.Printf("  [detect] Logical drive enumeration failed: %v\n", err)
 	}
 
 	fmt.Println("  [detect] Bootable media not found automatically")
-	return "", fmt.Errorf("no bootable Windows drive found with sources\\sxs directory")
+	return "", fmt.Errorf("no bootable Windows drive found with valid sources\\sxs directory")
+}
+
+// validateSxSDirectory checks if a path exists as a directory AND contains
+// at least one .cab file, confirming it's a valid Windows source media.
+func validateSxSDirectory(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil || !info.IsDir() {
+		return false
+	}
+	// Check for .cab files — a valid sxs directory must have them
+	matches, err := filepath.Glob(filepath.Join(path, "*.cab"))
+	if err != nil || len(matches) == 0 {
+		return false
+	}
+	return true
 }
 
 // GetOSBuildNumber returns the Windows build number.
