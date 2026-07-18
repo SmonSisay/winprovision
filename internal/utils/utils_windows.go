@@ -90,55 +90,68 @@ func GetWindowsVersion() (string, error) {
 }
 
 // DetectDestinationDrive returns the first available non-system fixed drive
-// (internal hard drive, not USB removable). It enumerates all volumes including
-// those without drive letters, mounting letterless ones temporarily.
+// (internal hard drive, not USB removable). It tries three strategies:
+// 1. Volume enumeration (finds letterless drives)
+// 2. Logical drive enumeration with DRIVE_FIXED check
+// 3. Logical drive enumeration with any non-removable drive check
 func DetectDestinationDrive() (string, error) {
 	systemDrive := strings.ToUpper(strings.TrimSuffix(os.Getenv("SystemDrive"), `\`))
 	if systemDrive == "" {
 		systemDrive = "C:"
 	}
 
+	// Strategy 1: enumerate all volumes including letterless ones
 	volumes, err := enumerateVolumes()
-	if err != nil {
-		// Fallback to legacy method
-		return detectDestinationLegacy(systemDrive)
-	}
-
-	for _, vol := range volumes {
-		if vol.driveLetter != "" && strings.EqualFold(vol.driveLetter, systemDrive) {
-			continue
-		}
-		drive := vol.driveLetter
-		if drive == "" {
-			drive = mountVolumeTemporarily(vol.name)
-		}
-		if drive == "" {
-			continue
-		}
-		root := drive + `\`
-		driveType := windows.GetDriveType(syscall.StringToUTF16Ptr(root))
-		if driveType == windows.DRIVE_FIXED {
-			return drive, nil
+	if err == nil {
+		for _, vol := range volumes {
+			if vol.driveLetter != "" && strings.EqualFold(vol.driveLetter, systemDrive) {
+				continue
+			}
+			drive := vol.driveLetter
+			if drive == "" {
+				drive = mountVolumeTemporarily(vol.name)
+			}
+			if drive == "" {
+				continue
+			}
+			root := drive + `\`
+			driveType := windows.GetDriveType(syscall.StringToUTF16Ptr(root))
+			if driveType == windows.DRIVE_FIXED {
+				return drive, nil
+			}
 		}
 	}
-	return detectDestinationLegacy(systemDrive)
-}
 
-func detectDestinationLegacy(systemDrive string) (string, error) {
+	// Strategy 2: legacy drive enumeration, strict DRIVE_FIXED check
 	drives, err := listLogicalDrives()
-	if err != nil {
-		return "", err
-	}
-	for _, drive := range drives {
-		if strings.EqualFold(drive, systemDrive) {
-			continue
+	if err == nil {
+		for _, drive := range drives {
+			if strings.EqualFold(drive, systemDrive) {
+				continue
+			}
+			root := drive + `\`
+			driveType := windows.GetDriveType(syscall.StringToUTF16Ptr(root))
+			if driveType == windows.DRIVE_FIXED {
+				return drive, nil
+			}
 		}
-		root := drive + `\`
-		driveType := windows.GetDriveType(syscall.StringToUTF16Ptr(root))
-		if driveType == windows.DRIVE_FIXED {
-			return drive, nil
+	}
+
+	// Strategy 3: accept any non-system, non-removable, non-CDROM drive
+	if err == nil {
+		for _, drive := range drives {
+			if strings.EqualFold(drive, systemDrive) {
+				continue
+			}
+			root := drive + `\`
+			driveType := windows.GetDriveType(syscall.StringToUTF16Ptr(root))
+			if driveType != windows.DRIVE_REMOVABLE && driveType != windows.DRIVE_CDROM &&
+				driveType != windows.DRIVE_REMOTE && driveType != windows.DRIVE_RAMDISK {
+				return drive, nil
+			}
 		}
 	}
+
 	return "", fmt.Errorf("no secondary fixed drive found")
 }
 
@@ -151,44 +164,41 @@ func DetectBootableDrive() (string, error) {
 		systemDrive = "C:"
 	}
 
+	// Strategy 1: enumerate all volumes including letterless ones
 	volumes, err := enumerateVolumes()
-	if err != nil {
-		return detectBootableLegacy(systemDrive)
-	}
-
-	for _, vol := range volumes {
-		if vol.driveLetter != "" && strings.EqualFold(vol.driveLetter, systemDrive) {
-			continue
-		}
-		drive := vol.driveLetter
-		if drive == "" {
-			drive = mountVolumeTemporarily(vol.name)
-		}
-		if drive == "" {
-			continue
-		}
-		sxsPath := drive + `\sources\sxs`
-		if DirExists(sxsPath) {
-			return drive, nil
+	if err == nil {
+		for _, vol := range volumes {
+			if vol.driveLetter != "" && strings.EqualFold(vol.driveLetter, systemDrive) {
+				continue
+			}
+			drive := vol.driveLetter
+			if drive == "" {
+				drive = mountVolumeTemporarily(vol.name)
+			}
+			if drive == "" {
+				continue
+			}
+			sxsPath := drive + `\sources\sxs`
+			if DirExists(sxsPath) {
+				return drive, nil
+			}
 		}
 	}
-	return detectBootableLegacy(systemDrive)
-}
 
-func detectBootableLegacy(systemDrive string) (string, error) {
+	// Strategy 2: legacy drive enumeration
 	drives, err := listLogicalDrives()
-	if err != nil {
-		return "", err
-	}
-	for _, drive := range drives {
-		if strings.EqualFold(drive, systemDrive) {
-			continue
+	if err == nil {
+		for _, drive := range drives {
+			if strings.EqualFold(drive, systemDrive) {
+				continue
+			}
+			sxsPath := drive + `\sources\sxs`
+			if DirExists(sxsPath) {
+				return drive, nil
+			}
 		}
-		sxsPath := drive + `\sources\sxs`
-		if DirExists(sxsPath) {
-			return drive, nil
-		}
 	}
+
 	return "", fmt.Errorf("no bootable Windows drive found with sources\\sxs directory")
 }
 
