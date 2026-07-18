@@ -157,7 +157,7 @@ func Install(ctx context.Context, app models.AppDefinition, softwareRoot string)
 		result.Duration = time.Since(start)
 		return result
 	}
-	if installed {
+	if installed && !app.AlwaysInstall {
 		result.Status = models.TaskStatusSkipped
 		result.Message = fmt.Sprintf("Already installed (%s)", reason)
 		result.Duration = time.Since(start)

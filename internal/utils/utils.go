@@ -55,6 +55,21 @@ func PromptDestinationFolder() (string, error) {
 	return filepath.Clean(path), nil
 }
 
+// PromptBootableDrive asks the user to enter the bootable flash drive letter or full path.
+func PromptBootableDrive() (string, error) {
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Print("Bootable flash not detected. Enter drive letter (e.g. D:) or full path to sources\\sxs: ")
+	line, err := reader.ReadString('\n')
+	if err != nil {
+		return "", fmt.Errorf("read bootable drive: %w", err)
+	}
+	input := strings.TrimSpace(line)
+	if input == "" {
+		return "", fmt.Errorf("bootable drive path cannot be empty")
+	}
+	return input, nil
+}
+
 // ResolveSoftwareDestination returns the full path to the software destination directory.
 func ResolveSoftwareDestination(destinationRoot, folderName string) string {
 	return filepath.Join(destinationRoot, folderName)

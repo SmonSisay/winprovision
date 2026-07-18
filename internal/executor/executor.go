@@ -243,18 +243,64 @@ func runWindowsTasks(ctx context.Context, settings *models.Settings, runTask fun
 
 // runDotNetTask enables .NET Framework 3.5 if configured.
 // It first attempts to find a bootable Windows disk with sources\sxs.
-// Falls back to the executable directory if no bootable disk is found.
+// If not found, it prompts the user to provide the path manually.
 func runDotNetTask(ctx context.Context, settings *models.Settings, rootDir string, runTask func(string, string, func() models.TaskResult) models.TaskResult) {
 	if settings.Windows.InstallDotNet35 {
 		runTask("dism", "Enable .NET Framework 3.5", func() models.TaskResult {
-			sxsPath := filepath.Join(rootDir, "sources", "sxs")
-			bootDrive, err := utils.DetectBootableDrive()
-			if err == nil {
-				sxsPath = bootDrive + `\sources\sxs`
+			sxsPath := resolveSxSPath()
+			if sxsPath == "" {
+				start := time.Now()
+				return models.TaskResult{
+					Name:     ".NET Framework 3.5",
+					Module:   "dism",
+					Status:   models.TaskStatusFailed,
+					Message:  "Bootable flash not detected and no path provided. .NET Framework 3.5 cannot be installed.",
+					Duration: time.Since(start),
+					Err:      fmt.Errorf("no valid sources\\sxs path provided"),
+				}
 			}
 			return dism.EnableDotNet35(ctx, sxsPath)
 		})
 	}
+}
+
+// resolveSxSPath tries to find the sources\sxs directory automatically,
+// then falls back to asking the user. Returns the validated path or empty string.
+func resolveSxSPath() string {
+	bootDrive, err := utils.DetectBootableDrive()
+	if err == nil {
+		sxsPath := bootDrive + `\sources\sxs`
+		if utils.DirExists(sxsPath) {
+			return sxsPath
+		}
+	}
+
+	input, err := utils.PromptBootableDrive()
+	if err != nil {
+		fmt.Printf("ERROR: %v\n", err)
+		return ""
+	}
+
+	// User entered a drive letter like "D:" — build full path
+	if len(input) == 2 && input[1] == ':' {
+		input = input + `\sources\sxs`
+	}
+	// User entered a full path like "D:\sources\sxs" or "D:\"
+	if strings.HasSuffix(strings.ToLower(input), `\sources\sxs`) {
+		// already correct
+	} else if strings.HasSuffix(input, `\`) || strings.HasSuffix(input, `/`) {
+		input = input + `sources\sxs`
+	} else if !strings.Contains(strings.ToLower(input), `\sources`) {
+		input = input + `\sources\sxs`
+	}
+
+	input = filepath.Clean(input)
+	if utils.DirExists(input) {
+		return input
+	}
+
+	fmt.Printf("ERROR: Path does not exist or is not accessible: %s\n", input)
+	return ""
 }
 
 // runInstallerTasks installs all configured applications and creates shortcuts.

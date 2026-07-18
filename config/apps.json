@@ -57,6 +57,7 @@
       "installerPath": "Skype4Business/lyncentry_X64.exe",
       "silentArgs": "/quiet /norestart",
       "version": "latest",
+      "alwaysInstall": true,
       "desktopShortcut": {
         "enabled": false
       },

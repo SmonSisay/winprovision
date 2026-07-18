@@ -59,12 +59,13 @@ type AppsConfig struct {
 
 // AppDefinition describes a single application to install.
 type AppDefinition struct {
-	Name          string           `json:"name"`
-	InstallerPath string           `json:"installerPath"`
-	SilentArgs    string           `json:"silentArgs"`
-	Version       string           `json:"version"`
-	DesktopShortcut ShortcutConfig `json:"desktopShortcut"`
-	Detection     DetectionRule    `json:"detection"`
+	Name            string           `json:"name"`
+	InstallerPath   string           `json:"installerPath"`
+	SilentArgs      string           `json:"silentArgs"`
+	Version         string           `json:"version"`
+	AlwaysInstall   bool             `json:"alwaysInstall"`
+	DesktopShortcut ShortcutConfig   `json:"desktopShortcut"`
+	Detection       DetectionRule    `json:"detection"`
 }
 
 // ShortcutConfig controls desktop shortcut creation for an application.
