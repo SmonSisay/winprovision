@@ -228,6 +228,9 @@ func runWindowsTasks(ctx context.Context, settings *models.Settings, runTask fun
 		runTask("windows", "Set Administrator Password", func() models.TaskResult {
 			return winconfig.SetAdministratorPassword(ctx, settings.Windows.AdministratorPassword)
 		})
+		runTask("windows", "Enable Administrator", func() models.TaskResult {
+			return winconfig.EnableAdministrator(ctx)
+		})
 	}
 	if settings.Windows.ShowFileExtensions {
 		runTask("windows", "Show File Extensions", func() models.TaskResult {
@@ -420,6 +423,10 @@ func buildTaskPlan(settings *models.Settings, apps []models.AppDefinition) *task
 		})
 		plan.actions = append(plan.actions, taskPlanEntry{
 			summary: "Set built-in Administrator password",
+			count:   1,
+		})
+		plan.actions = append(plan.actions, taskPlanEntry{
+			summary: "Re-enable built-in Administrator account",
 			count:   1,
 		})
 	}
