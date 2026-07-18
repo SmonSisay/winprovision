@@ -6,9 +6,7 @@
       "silentArgs": "/silent /install",
       "version": "latest",
       "desktopShortcut": {
-        "enabled": true,
-        "name": "Google Chrome",
-        "targetPath": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
+        "enabled": false
       },
       "detection": {
         "executablePath": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
@@ -20,9 +18,7 @@
       "silentArgs": "/S",
       "version": "latest",
       "desktopShortcut": {
-        "enabled": true,
-        "name": "Firefox",
-        "targetPath": "C:\\Program Files\\Mozilla Firefox\\firefox.exe"
+        "enabled": false
       },
       "detection": {
         "executablePath": "C:\\Program Files\\Mozilla Firefox\\firefox.exe"
@@ -71,9 +67,7 @@
       "silentArgs": "/s",
       "version": "latest",
       "desktopShortcut": {
-        "enabled": true,
-        "name": "Visual Geez",
-        "targetPath": "C:\\Program Files\\Visual Geez\\VisualGeez.exe"
+        "enabled": false
       },
       "detection": {
         "installDir": "C:\\Program Files\\Visual Geez"
