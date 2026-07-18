@@ -26,18 +26,11 @@ func NewDisplay(totalTasks int) *Display {
 }
 
 func (d *Display) ShowBanner(version, windowsVersion, username string) {
-	green := color.New(color.FgGreen, color.Bold)
-	white := color.New(color.FgWhite, color.Bold)
+	cyan := color.New(color.FgCyan, color.Bold)
+	grey := color.New(color.FgWhite)
 
-	green.Println("  ╔══════════════════════════════════════════════════════╗")
-	green.Println("  ║           WINDOWS PROVISION TOOL                    ║")
-	green.Println("  ╚══════════════════════════════════════════════════════╝")
-	white.Printf("  Version        :  ")
-	fmt.Println(version)
-	white.Printf("  Windows        :  ")
-	fmt.Println(windowsVersion)
-	white.Printf("  User           :  ")
-	fmt.Println(username)
+	cyan.Printf("  winprovision %s\n", version)
+	grey.Printf("  %s | %s\n", windowsVersion, username)
 	fmt.Println()
 }
 
@@ -183,11 +176,12 @@ func (d *Display) ShowFinalReport() {
 	completedArt.Println()
 	info := color.New(color.FgCyan, color.Bold)
 	info.Println("  ─────────────────────────────────────────────")
-	info.Println("  Everything is done!")
+	info.Println("  IT Officers — please verify:")
 	info.Println()
-	info.Println("  • Make sure to activate Kaspersky")
-	info.Println("  • Run the slave for that specific branch")
-	info.Println("  • Finally, make sure to add to the domain")
+	info.Println("  • All applications are installed and working")
+	info.Println("  • Run the slave for your branch")
+	info.Println("  • Add the workstation to the domain")
+	info.Println("  • Activate Kaspersky")
 	info.Println()
 	info.Println("  Enjoy your day!")
 	info.Println("  ─────────────────────────────────────────────")
