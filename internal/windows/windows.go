@@ -15,7 +15,6 @@ import (
 	"github.com/SmonSisay/winprovision/internal/models"
 	winreg "github.com/SmonSisay/winprovision/internal/registry"
 	"golang.org/x/sys/windows"
-	"golang.org/x/sys/windows/registry"
 )
 
 const (
@@ -132,18 +131,15 @@ func EnableRemoteDesktop(ctx context.Context) models.TaskResult {
 }
 
 // EnableAdministrator enables the built-in Administrator account.
+// Always runs "net user /active:yes" — it's idempotent and avoids false
+// positives from the registry-based check (SpecialAccounts\UserList may not
+// exist on fresh installs, causing the old check to skip when the account
+// was still disabled at the SAM level).
 func EnableAdministrator(ctx context.Context) models.TaskResult {
 	start := time.Now()
 	result := models.TaskResult{
 		Name:   "Administrator",
 		Module: adminModule,
-	}
-
-	if isAdministratorEnabled() {
-		result.Status = models.TaskStatusSkipped
-		result.Message = "Administrator account already enabled"
-		result.Duration = time.Since(start)
-		return result
 	}
 
 	cmd := exec.CommandContext(ctx, "net", "user", "administrator", "/active:yes")
@@ -156,8 +152,14 @@ func EnableAdministrator(ctx context.Context) models.TaskResult {
 		return result
 	}
 
-	result.Status = models.TaskStatusSuccess
-	result.Message = "Administrator account enabled"
+	outStr := strings.ToLower(string(output))
+	if strings.Contains(outStr, "already") {
+		result.Status = models.TaskStatusSkipped
+		result.Message = "Administrator account already enabled"
+	} else {
+		result.Status = models.TaskStatusSuccess
+		result.Message = "Administrator account enabled"
+	}
 	result.Duration = time.Since(start)
 	return result
 }
@@ -344,31 +346,6 @@ func isFirewallDisabled() bool {
 	// Count occurrences — if any profile still has "state    on", not disabled.
 	offCount := strings.Count(output, "state                                 on")
 	return offCount == 0
-}
-
-// isAdministratorEnabled checks the registry for the built-in Administrator
-// account disabled flag. This is locale-independent unlike parsing "net user"
-// output which changes language with Windows locale settings.
-func isAdministratorEnabled() bool {
-	// The built-in Administrator SID ends in -500. Its account flags are stored
-	// under HKLM\SAM (requires SYSTEM) — not readable this way. Instead we use
-	// the well-known registry path written by Windows when the account is
-	// explicitly disabled/enabled via Group Policy or net user.
-	k, err := registry.OpenKey(registry.LOCAL_MACHINE,
-		`SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon\SpecialAccounts\UserList`,
-		registry.QUERY_VALUE)
-	if err != nil {
-		// Key absent means no special hiding rules — account follows default (enabled).
-		return true
-	}
-	defer k.Close()
-	val, _, err := k.GetIntegerValue("Administrator")
-	if err != nil {
-		// Value absent — account is not explicitly hidden.
-		return true
-	}
-	// Value 0 = hidden/disabled, 1 = visible/enabled.
-	return val != 0
 }
 
 // Win32 API types and procs for NetUserSetInfo.
