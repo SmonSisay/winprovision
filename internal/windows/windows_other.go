@@ -45,6 +45,11 @@ func DisableWindowsUpdate(ctx context.Context) models.TaskResult {
 	return failedResult("Windows Update", "windows.update", "windows update configuration is only supported on Windows")
 }
 
+// EnsureSecondaryPartition creates a D: partition if only C: exists.
+func EnsureSecondaryPartition(ctx context.Context) models.TaskResult {
+	return failedResult("Create D: Partition", "windows.disk", "disk partitioning is only supported on Windows")
+}
+
 func failedResult(name, module, message string) models.TaskResult {
 	return models.TaskResult{
 		Name:     name,

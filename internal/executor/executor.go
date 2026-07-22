@@ -127,6 +127,10 @@ func Run(ctx context.Context, opts Options) int {
 		return result
 	}
 
+	runTask("windows", "Create D: Partition", func() models.TaskResult {
+		return winconfig.EnsureSecondaryPartition(ctx)
+	})
+
 	copyResult := runTask("copy", "Copying Software", func() models.TaskResult {
 		return runCopyPhase(rootDir, softwareDestination, logger)
 	})
@@ -402,6 +406,11 @@ func (p *taskPlan) ActionSummary() []string {
 // eliminates the DRY violation between counting tasks and building summaries.
 func buildTaskPlan(settings *models.Settings, apps []models.AppDefinition) *taskPlan {
 	plan := &taskPlan{}
+
+	plan.actions = append(plan.actions, taskPlanEntry{
+		summary: "Create secondary partition if needed",
+		count:   1,
+	})
 
 	plan.actions = append(plan.actions, taskPlanEntry{
 		summary: "Copy software payloads to destination drive",

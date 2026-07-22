@@ -30,6 +30,12 @@ desktop.ini
 logs/
 *.log
 
+# Software payloads (large installers, synced to USB manually)
+software/
+
+# Config (contains hardcoded passwords, synced to USB manually)
+config/
+
 # Secrets — never commit passwords or credentials
 .env
 *.env

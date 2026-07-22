@@ -1,0 +1,224 @@
+<?xml version="1.0" encoding="utf-8"?>
+<unattend xmlns="urn:schemas-microsoft-com:unattend">
+
+    <!-- ============================================================
+         PASS 1: windowsPE
+         Disk partitioning, OS image, locale, product key
+         ============================================================ -->
+    <settings pass="windowsPE">
+        <component name="Microsoft-Windows-International-Core-WinPE"
+                   processorArchitecture="amd64"
+                   publicKeyToken="31bf3856ad364e35"
+                   language="neutral"
+                   versionScope="nonSxS"
+                   xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <SetupUILanguage>
+                <UILanguage>en-US</UILanguage>
+            </SetupUILanguage>
+            <InputLocale>en-US</InputLocale>
+            <SystemLocale>en-US</SystemLocale>
+            <UILanguage>en-US</UILanguage>
+            <UserLocale>en-US</UserLocale>
+        </component>
+
+        <component name="Microsoft-Windows-Setup"
+                   processorArchitecture="amd64"
+                   publicKeyToken="31bf3856ad364e35"
+                   language="neutral"
+                   versionScope="nonSxS"
+                   xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+
+            <!-- Disk layout: wipe entire disk, create C: only.
+                 D: will be created later by Setup.exe using diskpart
+                 (since we need dynamic sizing based on actual disk). -->
+            <DiskConfiguration>
+                <Disk wcm:action="add">
+                    <CreatePartitions>
+                        <!-- EFI System Partition (100MB) -->
+                        <CreatePartition wcm:action="add">
+                            <Order>1</Order>
+                            <Type>EFI</Type>
+                            <Size>100</Size>
+                        </CreatePartition>
+                        <!-- Microsoft Reserved (16MB) -->
+                        <CreatePartition wcm:action="add">
+                            <Order>2</Order>
+                            <Type>MSR</Type>
+                            <Size>16</Size>
+                        </CreatePartition>
+                        <!-- C: partition — rest of disk -->
+                        <CreatePartition wcm:action="add">
+                            <Order>3</Order>
+                            <Type>Primary</Type>
+                            <Extend>true</Extend>
+                        </CreatePartition>
+                    </CreatePartitions>
+
+                    <ModifyPartitions>
+                        <ModifyPartition wcm:action="add">
+                            <Order>1</Order>
+                            <TypeID>C12A7328-F81F-11D2-BA4B-00A0C93EC93B</TypeID>
+                            <Label>System</Label>
+                        </ModifyPartition>
+                        <ModifyPartition wcm:action="add">
+                            <Order>2</Order>
+                            <TypeID>E3CBE404-F683-4D75-89D7-F879F3AADE9D</TypeID>
+                        </ModifyPartition>
+                        <ModifyPartition wcm:action="add">
+                            <Order>3</Order>
+                            <Label>Windows</Label>
+                            <Letter>C</Letter>
+                            <Format>NTFS</Format>
+                            <Primary>true</Primary>
+                        </ModifyPartition>
+                    </ModifyPartitions>
+
+                    <DiskID>0</DiskID>
+                    <WillWipeDisk>true</WillWipeDisk>
+                </Disk>
+            </DiskConfiguration>
+
+            <ImageInstall>
+                <OSImage>
+                    <InstallFrom>
+                        <MetaData wcm:action="add">
+                            <Key>/IMAGE/INDEX</Key>
+                            <Value>1</Value>
+                        </MetaData>
+                    </InstallFrom>
+                    <InstallToAvailablePartition>false</InstallToAvailablePartition>
+                </OSImage>
+            </ImageInstall>
+
+            <UserData>
+                <ProductKey>
+                    <Key></Key>
+                    <WillShowUI>Never</WillShowUI>
+                </ProductKey>
+                <AcceptEula>true</AcceptEula>
+            </UserData>
+
+        </component>
+    </settings>
+
+    <!-- ============================================================
+         PASS 2: specialize
+         Runs after OS image applied, before first user logon
+         ============================================================ -->
+    <settings pass="specialize">
+        <component name="Microsoft-Windows-Shell-Setup"
+                   processorArchitecture="amd64"
+                   publicKeyToken="31bf3856ad364e35"
+                   language="neutral"
+                   versionScope="nonSxS"
+                   xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <TimeZone>UTC</TimeZone>
+            <ComputerName>*</ComputerName>
+        </component>
+
+        <!-- Disable Server Manager at logon -->
+        <component name="Microsoft-Windows-ServerManager-SvrMgrNc"
+                   processorArchitecture="amd64"
+                   publicKeyToken="31bf3856ad364e35"
+                   language="neutral"
+                   versionScope="nonSxS"
+                   xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <DoNotOpenServerManagerAtLogon>true</DoNotOpenServerManagerAtLogon>
+        </component>
+
+        <!-- Enable Remote Desktop during specialize -->
+        <component name="Microsoft-Windows-TerminalServices-LocalSessionManager"
+                   processorArchitecture="amd64"
+                   publicKeyToken="31bf3856ad364e35"
+                   language="neutral"
+                   versionScope="nonSxS"
+                   xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <fDenyTSConnections>false</fDenyTSConnections>
+        </component>
+
+        <!-- Network settings: skip network location prompt -->
+        <component name="Microsoft-Windows-Deployment"
+                   processorArchitecture="amd64"
+                   publicKeyToken="31bf3856ad364e35"
+                   language="neutral"
+                   versionScope="nonSxS"
+                   xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+        </component>
+    </settings>
+
+    <!-- ============================================================
+         PASS 3: oobeSystem
+         First boot — skip OOBE, create admin, launch Setup.exe
+         ============================================================ -->
+    <settings pass="oobeSystem">
+        <component name="Microsoft-Windows-Shell-Setup"
+                   processorArchitecture="amd64"
+                   publicKeyToken="31bf3856ad364e35"
+                   language="neutral"
+                   versionScope="nonSxS"
+                   xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+
+            <OOBE>
+                <HideEULAPage>true</HideEULAPage>
+                <HideLocalAccountScreen>true</HideLocalAccountScreen>
+                <HideOEMRegistrationScreen>true</HideOEMRegistrationScreen>
+                <HideOnlineAccountScreens>true</HideOnlineAccountScreens>
+                <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
+                <NetworkLocation>Work</NetworkLocation>
+                <ProtectYourPC>3</ProtectYourPC>
+                <SkipMachineOOBE>true</SkipMachineOOBE>
+                <SkipUserOOBE>true</SkipUserOOBE>
+            </OOBE>
+
+            <!-- Auto-logon as Administrator (one time, to run Setup.exe) -->
+            <AutoLogon>
+                <Enabled>true</Enabled>
+                <LogonCount>1</LogonCount>
+                <Username>Administrator</Username>
+                <Password>
+                    <Value>Enat@3n47#2026</Value>
+                    <PlainText>true</PlainText>
+                </Password>
+            </AutoLogon>
+
+            <FirstLogonCommands>
+                <!-- Find the USB drive (has Setup.exe + config/) and launch it directly.
+                     Do NOT copy to C:\ — Setup.exe needs to run from the same drive
+                     as software/, config/, and run_setup.bat. -->
+                <SynchronousCommand wcm:action="add">
+                    <Order>1</Order>
+                    <CommandLine>cmd /c for %%d in (D E F G H I J K L M N O P Q R S T U V W X Y Z) do @if exist %%d:\Setup.exe if exist %%d:\config\settings.json (%%d:\Setup.exe &amp; goto :done3) &amp; :done3</CommandLine>
+                    <Description>Find and launch provisioning tool from USB</Description>
+                    <RequiresUserInput>false</RequiresUserInput>
+                </SynchronousCommand>
+            </FirstLogonCommands>
+
+        </component>
+
+        <!-- Enable built-in Administrator account -->
+        <component name="Microsoft-Windows-Deployment"
+                   processorArchitecture="amd64"
+                   publicKeyToken="31bf3856ad364e35"
+                   language="neutral"
+                   versionScope="nonSxS"
+                   xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <RunSynchronous>
+                <RunSynchronousCommand wcm:action="add">
+                    <Order>1</Order>
+                    <Path>net user Administrator /active:yes</Path>
+                    <Description>Enable Administrator account</Description>
+                </RunSynchronousCommand>
+            </RunSynchronous>
+        </component>
+
+    </settings>
+
+</unattend>
