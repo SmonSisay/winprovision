@@ -83,6 +83,20 @@ func Run(ctx context.Context, opts Options) int {
 		username = "Unknown"
 	}
 
+	// Create D: partition first so resolveDestination can auto-detect it.
+	fmt.Println()
+	fmt.Println("  ─── Preparing Disk ───")
+	fmt.Println()
+	partResult := winconfig.EnsureSecondaryPartition(ctx)
+	if partResult.Status == models.TaskStatusFailed {
+		fmt.Printf("  WARNING: %s\n", partResult.Message)
+	} else if partResult.Status == models.TaskStatusSkipped {
+		fmt.Printf("  %s\n", partResult.Message)
+	} else {
+		fmt.Printf("  D: partition created successfully\n")
+	}
+	fmt.Println()
+
 	destinationRoot, err := resolveDestination(settings)
 	if err != nil {
 		fmt.Printf("FATAL: %v\n", err)
@@ -126,10 +140,6 @@ func Run(ctx context.Context, opts Options) int {
 		)
 		return result
 	}
-
-	runTask("windows", "Create D: Partition", func() models.TaskResult {
-		return winconfig.EnsureSecondaryPartition(ctx)
-	})
 
 	copyResult := runTask("copy", "Copying Software", func() models.TaskResult {
 		return runCopyPhase(rootDir, softwareDestination, logger)
@@ -369,6 +379,21 @@ func resolveDestination(settings *models.Settings) (string, error) {
 		folderName = "Softwares"
 	}
 
+	// Auto-detect: if a secondary drive (D:) exists with the default folder, use it.
+	for _, letter := range []string{"D", "E", "F"} {
+		drive := letter + `:\`
+		if utils.DirExists(drive) {
+			autoPath := letter + `:\` + folderName
+			if !utils.DirExists(autoPath) {
+				// Drive exists but folder doesn't — create it automatically.
+				_ = utils.EnsureDir(autoPath)
+			}
+			fmt.Printf("  Using: %s\n", autoPath)
+			return autoPath, nil
+		}
+	}
+
+	// No secondary drive found — ask the user.
 	userPath, promptErr := utils.PromptDestinationFolder(folderName)
 	if promptErr != nil {
 		return "", fmt.Errorf("destination folder: %w", promptErr)
@@ -406,11 +431,6 @@ func (p *taskPlan) ActionSummary() []string {
 // eliminates the DRY violation between counting tasks and building summaries.
 func buildTaskPlan(settings *models.Settings, apps []models.AppDefinition) *taskPlan {
 	plan := &taskPlan{}
-
-	plan.actions = append(plan.actions, taskPlanEntry{
-		summary: "Create secondary partition if needed",
-		count:   1,
-	})
 
 	plan.actions = append(plan.actions, taskPlanEntry{
 		summary: "Copy software payloads to destination drive",
