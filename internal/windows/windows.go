@@ -156,6 +156,10 @@ func EnableAdministrator(ctx context.Context) models.TaskResult {
 	lockCmd := exec.CommandContext(ctx, "net", "user", "administrator", "/passwordchg:no")
 	lockOut, lockErr := lockCmd.CombinedOutput()
 
+	// Make the password never expire.
+	expireCmd := exec.CommandContext(ctx, "net", "user", "administrator", "/expires:never")
+	expireOut, expireErr := expireCmd.CombinedOutput()
+
 	outStr := strings.ToLower(string(output))
 	if strings.Contains(outStr, "already") {
 		result.Status = models.TaskStatusSkipped
@@ -166,9 +170,15 @@ func EnableAdministrator(ctx context.Context) models.TaskResult {
 	}
 
 	if lockErr != nil {
-		result.Message += " (warning: could not lock password: " + strings.TrimSpace(string(lockOut)) + ")"
+		result.Message += " (warning: could not lock password change: " + strings.TrimSpace(string(lockOut)) + ")"
 	} else {
 		result.Message += ", password change locked"
+	}
+
+	if expireErr != nil {
+		result.Message += " (warning: could not set password to never expire: " + strings.TrimSpace(string(expireOut)) + ")"
+	} else {
+		result.Message += ", password never expires"
 	}
 
 	result.Duration = time.Since(start)
