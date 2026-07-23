@@ -178,9 +178,12 @@ func Install(ctx context.Context, app models.AppDefinition, softwareRoot string)
 	var flagSets [][]string
 	explicitArgs := SplitArgs(app.SilentArgs)
 	if len(explicitArgs) > 0 {
+		// App has explicit silent args — only try those, never fall back
+		// to generic flags (e.g. Office would show a help dialog for /S).
 		flagSets = append(flagSets, explicitArgs)
+	} else {
+		flagSets = append(flagSets, fallbackSilentFlags...)
 	}
-	flagSets = append(flagSets, fallbackSilentFlags...)
 
 	var lastErr error
 	for _, flags := range flagSets {
