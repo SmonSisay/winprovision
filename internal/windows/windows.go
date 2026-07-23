@@ -152,6 +152,10 @@ func EnableAdministrator(ctx context.Context) models.TaskResult {
 		return result
 	}
 
+	// Prevent the user from changing the Administrator password.
+	lockCmd := exec.CommandContext(ctx, "net", "user", "administrator", "/passwordchg:no")
+	lockOut, lockErr := lockCmd.CombinedOutput()
+
 	outStr := strings.ToLower(string(output))
 	if strings.Contains(outStr, "already") {
 		result.Status = models.TaskStatusSkipped
@@ -160,6 +164,13 @@ func EnableAdministrator(ctx context.Context) models.TaskResult {
 		result.Status = models.TaskStatusSuccess
 		result.Message = "Administrator account enabled"
 	}
+
+	if lockErr != nil {
+		result.Message += " (warning: could not lock password: " + strings.TrimSpace(string(lockOut)) + ")"
+	} else {
+		result.Message += ", password change locked"
+	}
+
 	result.Duration = time.Since(start)
 	return result
 }
