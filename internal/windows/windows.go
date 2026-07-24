@@ -65,25 +65,21 @@ func EnableRemoteDesktop(ctx context.Context) models.TaskResult {
 	}
 
 	const rdpKey = `HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server`
+
+	// Enable remote connections if not already enabled.
 	value, err := winreg.GetDWORD(rdpKey, "fDenyTSConnections")
-	if err == nil && value == 0 {
-		result.Status = models.TaskStatusSkipped
-		result.Message = "Remote Desktop already enabled"
-		result.Duration = time.Since(start)
-		return result
+	if err != nil || value != 0 {
+		if err := winreg.SetDWORD(rdpKey, "fDenyTSConnections", 0); err != nil {
+			result.Status = models.TaskStatusFailed
+			result.Message = "Failed to update RDP registry setting"
+			result.Err = err
+			result.Duration = time.Since(start)
+			return result
+		}
 	}
 
-	// Allow remote connections (fDenyTSConnections = 0)
-	if err := winreg.SetDWORD(rdpKey, "fDenyTSConnections", 0); err != nil {
-		result.Status = models.TaskStatusFailed
-		result.Message = "Failed to update RDP registry setting"
-		result.Err = err
-		result.Duration = time.Since(start)
-		return result
-	}
-
-	// Disable NLA — uncheck "Allow connections only from computers running
-	// Remote Desktop with Network Level Authentication"
+	// Always configure NLA — don't skip even if RDP was already enabled,
+	// because fDenyTSConnections=0 doesn't mean NLA is disabled.
 	const rdpTcpKey = `HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp`
 	if err := winreg.SetDWORD(rdpTcpKey, "UserAuthentication", 0); err != nil {
 		result.Status = models.TaskStatusFailed
@@ -93,7 +89,7 @@ func EnableRemoteDesktop(ctx context.Context) models.TaskResult {
 		return result
 	}
 
-	// Enable Remote Assistance — check "Allow Remote Assistance connections"
+	// Enable Remote Assistance.
 	const raKey = `HKLM\SYSTEM\CurrentControlSet\Control\Remote Assistance`
 	if err := winreg.SetDWORD(raKey, "fAllowToGetHelp", 1); err != nil {
 		result.Status = models.TaskStatusFailed
