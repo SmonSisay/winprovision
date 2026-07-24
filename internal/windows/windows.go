@@ -152,13 +152,12 @@ func EnableAdministrator(ctx context.Context) models.TaskResult {
 		return result
 	}
 
-	// Prevent the user from changing the Administrator password.
-	lockCmd := exec.CommandContext(ctx, "net", "user", "administrator", "/passwordchg:no")
+	// Prevent the user from changing the Administrator password and set
+	// password to never expire using PowerShell (net user /passwordchg:no
+	// is blocked by Windows on the built-in Administrator account).
+	psScript := `Set-LocalUser -Name "Administrator" -PasswordNeverExpires $true -PasswordChangeEnabled $false`
+	lockCmd := exec.CommandContext(ctx, "powershell", "-NoProfile", "-Command", psScript)
 	lockOut, lockErr := lockCmd.CombinedOutput()
-
-	// Make the password never expire.
-	expireCmd := exec.CommandContext(ctx, "net", "user", "administrator", "/expires:never")
-	expireOut, expireErr := expireCmd.CombinedOutput()
 
 	outStr := strings.ToLower(string(output))
 	if strings.Contains(outStr, "already") {
@@ -170,15 +169,9 @@ func EnableAdministrator(ctx context.Context) models.TaskResult {
 	}
 
 	if lockErr != nil {
-		result.Message += " (warning: could not lock password change: " + strings.TrimSpace(string(lockOut)) + ")"
+		result.Message += " (warning: could not set password policy: " + strings.TrimSpace(string(lockOut)) + ")"
 	} else {
-		result.Message += ", password change locked"
-	}
-
-	if expireErr != nil {
-		result.Message += " (warning: could not set password to never expire: " + strings.TrimSpace(string(expireOut)) + ")"
-	} else {
-		result.Message += ", password never expires"
+		result.Message += ", password never expires, change locked"
 	}
 
 	result.Duration = time.Since(start)

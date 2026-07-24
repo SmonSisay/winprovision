@@ -4,6 +4,7 @@ package executor
 import (
 	"context"
 	"fmt"
+	"os/exec"
 	"path/filepath"
 	"runtime/debug"
 	"strings"
@@ -379,17 +380,19 @@ func resolveDestination(settings *models.Settings) (string, error) {
 		folderName = "Softwares"
 	}
 
-	// Auto-detect: if a secondary drive (D:) exists with the default folder, use it.
+	// Auto-detect: if a secondary fixed drive (D:, E:, F:) exists, use it.
+	// Skip removable drives (USB) by checking volume DriveType.
 	for _, letter := range []string{"D", "E", "F"} {
 		drive := letter + `:\`
 		if utils.DirExists(drive) {
-			autoPath := letter + `:\` + folderName
-			if !utils.DirExists(autoPath) {
-				// Drive exists but folder doesn't — create it automatically.
-				_ = utils.EnsureDir(autoPath)
+			// Verify it's a fixed drive, not USB/removable
+			checkCmd := exec.Command("powershell", "-NoProfile", "-Command",
+				fmt.Sprintf(`if ((Get-Volume -DriveLetter %s -ErrorAction SilentlyContinue).DriveType -eq 'Fixed') { "FIXED" }`, letter))
+			out, err := checkCmd.Output()
+			if err == nil && strings.TrimSpace(string(out)) == "FIXED" {
+				fmt.Printf("  Using: %s%s\n", drive, folderName)
+				return drive, nil
 			}
-			fmt.Printf("  Using: %s\n", autoPath)
-			return autoPath, nil
 		}
 	}
 

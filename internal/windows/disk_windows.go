@@ -68,7 +68,7 @@ Write-Output "OK:$($newPart.DriveLetter)"
 }
 
 func hasSecondaryPartition() bool {
-	ps := `Get-Partition | Where-Object { $_.DriveLetter -ne 'C' -and $_.DriveLetter -ne '' -and $_.Type -eq 'Basic' } | Select-Object -First 1 -ExpandProperty DriveLetter`
+	ps := `Get-Partition | Where-Object { $_.DriveLetter -ne 'C' -and $_.DriveLetter -ne '' -and $_.Type -eq 'Basic' -and (Get-Volume -Partition $_).DriveType -eq 'Fixed' } | Select-Object -First 1 -ExpandProperty DriveLetter`
 	cmd := exec.Command("powershell", "-NoProfile", "-Command", ps)
 	out, err := cmd.Output()
 	if err != nil {
