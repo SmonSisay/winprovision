@@ -13,12 +13,13 @@ import (
 	"github.com/SmonSisay/winprovision/internal/models"
 )
 
-// EnsureSecondaryPartition checks whether a non-system fixed drive (D:, E:, etc.)
-// exists. If only C: exists, it shrinks C: by 50% and creates D: from the freed space.
+// EnsureSecondaryPartition checks whether a non-system fixed drive exists.
+// If only C: exists internally, it shrinks C: by 50% and creates a new partition
+// with the next available drive letter (not hardcoded — USB may take D:).
 func EnsureSecondaryPartition(ctx context.Context) models.TaskResult {
 	start := time.Now()
 	result := models.TaskResult{
-		Name:   "Create D: Partition",
+		Name:   "Create Data Partition",
 		Module: "windows.disk",
 	}
 
@@ -53,6 +54,14 @@ Write-Output "OK:$($newPart.DriveLetter)"
 
 	time.Sleep(2 * time.Second)
 
+	letter := ""
+	for _, line := range strings.Split(stdout.String(), "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "OK:") {
+			letter = strings.TrimPrefix(strings.TrimSpace(line), "OK:")
+			break
+		}
+	}
+
 	if !hasSecondaryPartition() {
 		result.Status = models.TaskStatusFailed
 		result.Message = "Partition created but secondary drive not detected"
@@ -62,7 +71,11 @@ Write-Output "OK:$($newPart.DriveLetter)"
 	}
 
 	result.Status = models.TaskStatusSuccess
-	result.Message = "Created D: partition (50% of disk)"
+	if letter != "" {
+		result.Message = fmt.Sprintf("Created %s: partition (50%% of disk)", letter)
+	} else {
+		result.Message = "Created secondary partition (50% of disk)"
+	}
 	result.Duration = time.Since(start)
 	return result
 }

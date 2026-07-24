@@ -380,19 +380,22 @@ func resolveDestination(settings *models.Settings) (string, error) {
 		folderName = "Softwares"
 	}
 
-	// Auto-detect: if a secondary fixed drive (D:, E:, F:) exists, use it.
-	// Skip removable drives (USB) by checking volume DriveType.
-	for _, letter := range []string{"D", "E", "F"} {
-		drive := letter + `:\`
-		if utils.DirExists(drive) {
-			// Verify it's a fixed drive, not USB/removable
-			checkCmd := exec.Command("powershell", "-NoProfile", "-Command",
-				fmt.Sprintf(`if ((Get-Volume -DriveLetter %s -ErrorAction SilentlyContinue).DriveType -eq 'Fixed') { "FIXED" }`, letter))
-			out, err := checkCmd.Output()
-			if err == nil && strings.TrimSpace(string(out)) == "FIXED" {
-				fmt.Printf("  Using: %s%s\n", drive, folderName)
-				return drive, nil
+	// Auto-detect: find any fixed (non-removable) drive that isn't C:.
+	// The letter could be D:, E:, F:, etc. depending on what's plugged in.
+	// USB/removable drives are excluded.
+	checkCmd := exec.Command("powershell", "-NoProfile", "-Command",
+		`Get-Volume | Where-Object { $_.DriveType -eq 'Fixed' -and $_.DriveLetter -ne 'C' -and $_.DriveLetter -ne '' -and $_.DriveLetter -ne $null } | Select-Object -First 1 -ExpandProperty DriveLetter`)
+	out, err := checkCmd.Output()
+	if err == nil {
+		letter := strings.TrimSpace(string(out))
+		if letter != "" {
+			drive := letter + `:\`
+			autoPath := drive + folderName
+			if !utils.DirExists(autoPath) {
+				_ = utils.EnsureDir(autoPath)
 			}
+			fmt.Printf("  Using: %s\n", autoPath)
+			return drive, nil
 		}
 	}
 
