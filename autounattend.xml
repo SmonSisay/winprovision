@@ -201,13 +201,13 @@
                 </LocalAccounts>
             </UserAccounts>
 
-            <!-- Auto-logon as Administrator (one time, to run Setup.exe) -->
+            <!-- Auto-logon as EBAdmin (one time, to run Setup.exe) -->
             <AutoLogon>
                 <Enabled>true</Enabled>
                 <LogonCount>1</LogonCount>
-                <Username>Administrator</Username>
+                <Username>EBAdmin</Username>
                 <Password>
-                    <Value>Enat@3n47#2026</Value>
+                    <Value>Pass@12345</Value>
                     <PlainText>true</PlainText>
                 </Password>
             </AutoLogon>
