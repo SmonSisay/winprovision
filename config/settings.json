@@ -13,6 +13,13 @@
     "showFileExtensions": false,
     "showHiddenFiles": false
   },
+  "users": {
+    "ebadmin": {
+      "username": "EBAdmin",
+      "password": "Pass@12345",
+      "createdBy": "autounattend.xml"
+    }
+  },
   "logging": {
     "file": "logs/setup.log",
     "level": "info"
