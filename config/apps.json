@@ -27,7 +27,7 @@
     {
       "name": "Microsoft Office",
       "installerPath": "MicrosoftOffice/setup.exe",
-      "silentArgs": "/quiet /config proplus.ww\\config.xml",
+      "silentArgs": "/config proplus.ww\\config.xml",
       "version": "latest",
       "desktopShortcut": {
         "enabled": false
