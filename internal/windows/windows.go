@@ -148,10 +148,17 @@ func EnableAdministrator(ctx context.Context) models.TaskResult {
 		return result
 	}
 
-	// Prevent the user from changing the Administrator password and set
-	// password to never expire using PowerShell (net user /passwordchg:no
-	// is blocked by Windows on the built-in Administrator account).
-	psScript := `Set-LocalUser -Name "Administrator" -PasswordNeverExpires $true -PasswordChangeEnabled $false`
+	// Set password policy using ADSI/COM — this bypasses the Error 1322
+	// that net user and Set-LocalUser hit on the built-in Administrator.
+	// UF_DONT_CHANGE_PASSWD (0x40) = "User cannot change password"
+	// UF_DONT_EXPIRE_PASSWD (0x10000) = "Password never expires"
+	psScript := `
+$admin = [ADSI]"WinNT://./Administrator,User"
+$flags = $admin.UserFlags.value -bor 0x40 -bor 0x10000
+$admin.Put("UserFlags", $flags)
+$admin.SetInfo()
+Write-Output "OK"
+`
 	lockCmd := exec.CommandContext(ctx, "powershell", "-NoProfile", "-Command", psScript)
 	lockOut, lockErr := lockCmd.CombinedOutput()
 
@@ -164,7 +171,7 @@ func EnableAdministrator(ctx context.Context) models.TaskResult {
 		result.Message = "Administrator account enabled"
 	}
 
-	if lockErr != nil {
+	if lockErr != nil || !strings.Contains(string(lockOut), "OK") {
 		result.Message += " (warning: could not set password policy: " + strings.TrimSpace(string(lockOut)) + ")"
 	} else {
 		result.Message += ", password never expires, change locked"
