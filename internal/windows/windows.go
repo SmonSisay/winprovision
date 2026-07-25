@@ -89,6 +89,20 @@ func EnableRemoteDesktop(ctx context.Context) models.TaskResult {
 		return result
 	}
 
+	// Restart TermService so the NLA change takes effect immediately.
+	// Stop first (ignore errors — it may not be running), then start.
+	exec.CommandContext(ctx, "net", "stop", "TermService").CombinedOutput()
+	if out, err := exec.CommandContext(ctx, "net", "start", "TermService").CombinedOutput(); err != nil {
+		outStr := strings.ToLower(string(out))
+		if !strings.Contains(outStr, "already") {
+			result.Status = models.TaskStatusFailed
+			result.Message = fmt.Sprintf("NLA set but TermService restart failed: %s", strings.TrimSpace(string(out)))
+			result.Err = fmt.Errorf("restart TermService: %w", err)
+			result.Duration = time.Since(start)
+			return result
+		}
+	}
+
 	// Enable Remote Assistance.
 	const raKey = `HKLM\SYSTEM\CurrentControlSet\Control\Remote Assistance`
 	if err := winreg.SetDWORD(raKey, "fAllowToGetHelp", 1); err != nil {
@@ -106,18 +120,6 @@ func EnableRemoteDesktop(ctx context.Context) models.TaskResult {
 		result.Err = fmt.Errorf("configure TermService: %w", err)
 		result.Duration = time.Since(start)
 		return result
-	}
-
-	// Start TermService — ignore "already running" (exit 2), fail on anything else.
-	if out, err := exec.CommandContext(ctx, "net", "start", "TermService").CombinedOutput(); err != nil {
-		outStr := strings.ToLower(string(out))
-		if !strings.Contains(outStr, "already been started") {
-			result.Status = models.TaskStatusFailed
-			result.Message = fmt.Sprintf("RDP enabled but TermService failed to start: %s", strings.TrimSpace(string(out)))
-			result.Err = fmt.Errorf("start TermService: %w", err)
-			result.Duration = time.Since(start)
-			return result
-		}
 	}
 
 	result.Status = models.TaskStatusSuccess
