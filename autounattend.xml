@@ -30,9 +30,18 @@
                    xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State"
                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
 
+            <!-- Clean disk BEFORE partitioning — fixes Dell PCs with
+                 OEM/recovery partitions that block WillWipeDisk. -->
+            <RunSynchronous>
+                <RunSynchronousCommand wcm:action="add">
+                    <Order>1</Order>
+                    <Path>cmd /c echo select disk 0&#xD;&#xA;clean&#xD;&#xA;exit | diskpart</Path>
+                    <Description>Wipe disk 0 before Windows partitioning</Description>
+                </RunSynchronousCommand>
+            </RunSynchronous>
+
             <!-- Disk layout: wipe entire disk, create C: only.
-                 D: will be created later by Setup.exe using diskpart
-                 (since we need dynamic sizing based on actual disk). -->
+                 D: will be created later by Setup.exe. -->
             <DiskConfiguration>
                 <Disk wcm:action="add">
                     <CreatePartitions>
@@ -154,7 +163,7 @@
 
     <!-- ============================================================
          PASS 3: oobeSystem
-         First boot — skip OOBE, create admin, launch Setup.exe
+         First boot — skip OOBE, create users, launch Setup.exe
          ============================================================ -->
     <settings pass="oobeSystem">
         <component name="Microsoft-Windows-Shell-Setup"
@@ -176,6 +185,21 @@
                 <SkipMachineOOBE>true</SkipMachineOOBE>
                 <SkipUserOOBE>true</SkipUserOOBE>
             </OOBE>
+
+            <!-- Create EBAdmin user (regular work account) -->
+            <UserAccounts>
+                <LocalAccounts>
+                    <LocalAccount wcm:action="add">
+                        <Name>EBAdmin</Name>
+                        <DisplayName>EBAdmin</DisplayName>
+                        <Group>Administrators</Group>
+                        <Password>
+                            <Value>Pass@12345</Value>
+                            <PlainText>true</PlainText>
+                        </Password>
+                    </LocalAccount>
+                </LocalAccounts>
+            </UserAccounts>
 
             <!-- Auto-logon as Administrator (one time, to run Setup.exe) -->
             <AutoLogon>
