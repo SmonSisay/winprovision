@@ -59,12 +59,15 @@ type AppsConfig struct {
 }
 
 // AppDefinition describes a single application to install.
+// When CopyOnly is true the app folder is only copied to the destination
+// (e.g. printer drivers or portable tools) and its installer is never run.
 type AppDefinition struct {
 	Name            string           `json:"name"`
 	InstallerPath   string           `json:"installerPath"`
 	SilentArgs      string           `json:"silentArgs"`
 	Version         string           `json:"version"`
 	AlwaysInstall   bool             `json:"alwaysInstall"`
+	CopyOnly        bool             `json:"copyOnly"`
 	DesktopShortcut ShortcutConfig   `json:"desktopShortcut"`
 	Detection       DetectionRule    `json:"detection"`
 }

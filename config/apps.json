@@ -108,6 +108,14 @@
       "detection": {
         "installDir": "C:\\Program Files\\FortiNAC\\PersistentAgent"
       }
+    },
+    {
+      "name": "Printer Drivers",
+      "installerPath": "PrinterDrivers/",
+      "copyOnly": true,
+      "desktopShortcut": {
+        "enabled": false
+      }
     }
   ]
 }

@@ -332,9 +332,23 @@ func resolveSxSPath(logger logging.Logger) string {
 }
 
 // runInstallerTasks installs all configured applications and creates shortcuts.
+// Copy-only apps are never executed — they are reported as delivered since the
+// copy phase already placed their folder in the destination.
 func runInstallerTasks(ctx context.Context, apps []models.AppDefinition, softwareDestination string, runTask func(string, string, func() models.TaskResult) models.TaskResult) {
 	for _, app := range apps {
 		app := app
+		if app.CopyOnly {
+			runTask("installer", app.Name, func() models.TaskResult {
+				return models.TaskResult{
+					Name:     app.Name,
+					Module:   "installer",
+					Status:   models.TaskStatusSkipped,
+					Message:  "Copy-only — folder copied to destination, installer not executed",
+					Duration: 0,
+				}
+			})
+			continue
+		}
 		runTask("installer", app.Name, func() models.TaskResult {
 			return installer.Install(ctx, app, softwareDestination)
 		})
@@ -491,6 +505,13 @@ func buildTaskPlan(settings *models.Settings, apps []models.AppDefinition) *task
 	}
 
 	for _, app := range apps {
+		if app.CopyOnly {
+			plan.actions = append(plan.actions, taskPlanEntry{
+				summary: fmt.Sprintf("Copy %s (not installed)", app.Name),
+				count:   1,
+			})
+			continue
+		}
 		plan.actions = append(plan.actions, taskPlanEntry{
 			summary: fmt.Sprintf("Install %s", app.Name),
 			count:   1,

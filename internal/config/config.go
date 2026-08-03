@@ -121,6 +121,9 @@ func validateApp(app *models.AppDefinition) error {
 		app.Detection.ExecutablePath == "" &&
 		app.Detection.InstallDir == "" &&
 		app.Detection.ProductVersion == "" {
+		if app.CopyOnly {
+			return nil
+		}
 		return fmt.Errorf("at least one detection rule is required")
 	}
 	return nil
