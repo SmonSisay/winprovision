@@ -30,13 +30,20 @@
                    xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State"
                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
 
-            <!-- Clean disk BEFORE partitioning — fixes Dell PCs with
-                 OEM/recovery partitions that block WillWipeDisk. -->
+            <!-- Wipe disk BEFORE Windows partitioning — fixes Dell PCs with
+                 OEM/recovery partitions or MBR disks that block setup.
+                 list disk  → show available disks (visible in setup logs)
+                 clean      → remove ALL partitions & disk structure
+                 convert gpt→ make it a clean GPT disk (required for UEFI/EFI)
+                 Runs as the FIRST step of the windowsPE pass, so Windows Setup
+                 then partitions the fully-clean disk without errors.
+                 The (echo ... && echo ...) group pipes every line to diskpart
+                 reliably (the old CRLF echo trick could silently skip lines). -->
             <RunSynchronous>
                 <RunSynchronousCommand wcm:action="add">
                     <Order>1</Order>
-                    <Path>cmd /c echo select disk 0&#xD;&#xA;clean&#xD;&#xA;exit | diskpart</Path>
-                    <Description>Wipe disk 0 before Windows partitioning</Description>
+                    <Path>cmd /c (echo list disk&amp;&amp; echo select disk 0&amp;&amp; echo clean&amp;&amp; echo convert gpt&amp;&amp; echo exit) | diskpart</Path>
+                    <Description>List disks, wipe disk 0, convert to GPT before Windows partitioning</Description>
                 </RunSynchronousCommand>
             </RunSynchronous>
 
