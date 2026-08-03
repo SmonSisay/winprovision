@@ -152,11 +152,13 @@ func EnableAdministrator(ctx context.Context) models.TaskResult {
 
 	// Set password policy using ADSI/COM — this bypasses the Error 1322
 	// that net user and Set-LocalUser hit on the built-in Administrator.
-	// UF_DONT_CHANGE_PASSWD (0x40) = "User cannot change password"
+	// UF_ACCOUNTDISABLE (0x2) off     = account enabled (disabled unchecked)
+	// UF_DONT_CHANGE_PASSWD (0x40)    = "User cannot change password"
 	// UF_DONT_EXPIRE_PASSWD (0x10000) = "Password never expires"
 	psScript := `
 $admin = [ADSI]"WinNT://./Administrator,User"
-$flags = $admin.UserFlags.value -bor 0x40 -bor 0x10000
+$flags = $admin.UserFlags.value
+$flags = ($flags -bor 0x40 -bor 0x10000) -band (-bnot 0x2)
 $admin.Put("UserFlags", $flags)
 $admin.SetInfo()
 Write-Output "OK"
