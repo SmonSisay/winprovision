@@ -74,6 +74,18 @@
       }
     },
     {
+      "name": "Power Geez",
+      "installerPath": "PowerGeez/iNSTALL Ge'ez 10.exe",
+      "silentArgs": "/s",
+      "version": "latest",
+      "desktopShortcut": {
+        "enabled": false
+      },
+      "detection": {
+        "installDir": "C:\\Program Files\\Power Geez"
+      }
+    },
+    {
       "name": "Kaspersky",
       "installerPath": "Kaspersky Endpoint installer 12.3/Kaspersky Endpoint security installer 12.3 update - Copy.exe",
       "silentArgs": "/s",
