@@ -394,6 +394,25 @@ func resolveDestination(settings *models.Settings) (string, error) {
 		folderName = "Softwares"
 	}
 
+	// Always prefer the data volume created by EnsureSecondaryPartition
+	// (labelled "Data" — the partition made by shrinking C: by 50%).
+	// Only if that volume is missing do we fall back to any other fixed
+	// non-C: drive, and finally ask the user for a destination.
+	preferredCmd := exec.Command("powershell", "-NoProfile", "-Command",
+		`Get-Volume | Where-Object { $_.FileSystemLabel -eq 'Data' -and $_.DriveLetter -ne '' -and $_.DriveLetter -ne $null } | Select-Object -First 1 -ExpandProperty DriveLetter`)
+	if out, err := preferredCmd.Output(); err == nil {
+		letter := strings.TrimSpace(string(out))
+		if letter != "" {
+			drive := letter + `:\`
+			autoPath := drive + folderName
+			if !utils.DirExists(autoPath) {
+				_ = utils.EnsureDir(autoPath)
+			}
+			fmt.Printf("  Using: %s (data volume from C: shrink)\n", autoPath)
+			return drive, nil
+		}
+	}
+
 	// Auto-detect: find any fixed (non-removable) drive that isn't C:.
 	// The letter could be D:, E:, F:, etc. depending on what's plugged in.
 	// USB/removable drives are excluded.
