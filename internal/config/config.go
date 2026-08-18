@@ -117,6 +117,17 @@ func validateApp(app *models.AppDefinition) error {
 			return fmt.Errorf("desktop shortcut targetPath is required when enabled")
 		}
 	}
+	if app.Deploy != nil {
+		if app.CopyOnly {
+			return fmt.Errorf("deploy and copyOnly are mutually exclusive")
+		}
+		if strings.TrimSpace(app.Deploy.SourceDir) == "" {
+			return fmt.Errorf("deploy.sourceDir is required")
+		}
+		if strings.TrimSpace(app.Deploy.InstallDir) == "" {
+			return fmt.Errorf("deploy.installDir is required")
+		}
+	}
 	if app.Detection.Registry == nil &&
 		app.Detection.ExecutablePath == "" &&
 		app.Detection.InstallDir == "" &&

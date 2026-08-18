@@ -61,6 +61,9 @@ type AppsConfig struct {
 // AppDefinition describes a single application to install.
 // When CopyOnly is true the app folder is only copied to the destination
 // (e.g. printer drivers or portable tools) and its installer is never run.
+// When Deploy is set, the installer is attempted first and, if the
+// application is not detected afterwards, the pre-extracted payload under
+// Deploy.SourceDir is deployed directly (fonts, COM registration, etc.).
 type AppDefinition struct {
 	Name            string           `json:"name"`
 	InstallerPath   string           `json:"installerPath"`
@@ -70,6 +73,30 @@ type AppDefinition struct {
 	CopyOnly        bool             `json:"copyOnly"`
 	DesktopShortcut ShortcutConfig   `json:"desktopShortcut"`
 	Detection       DetectionRule    `json:"detection"`
+	Deploy          *DeployConfig    `json:"deploy,omitempty"`
+}
+
+// DeployConfig describes a deterministic, installer-free installation of a
+// pre-extracted application payload (used for installers that cannot run
+// silently). The payload lives under <app folder>/<SourceDir>.
+type DeployConfig struct {
+	// SourceDir is the folder inside the app folder holding the payload
+	// to copy into InstallDir.
+	SourceDir string `json:"sourceDir"`
+	// InstallDir is the destination directory on the target machine
+	// (supports %VAR% expansion), e.g. C:\Program Files\Power Geez.
+	InstallDir string `json:"installDir"`
+	// FontsDir, relative to SourceDir, holds *.ttf fonts to register with
+	// Windows (copied to C:\Windows\Fonts and registered in the registry).
+	FontsDir string `json:"fontsDir,omitempty"`
+	// SystemFiles, relative to SourceDir, are copied to both System32 and
+	// SysWOW64 and self-registered (COM/OCX/DLL). Omitted when not needed.
+	SystemFiles []string `json:"systemFiles,omitempty"`
+	// RegisterFiles, relative to InstallDir, are self-registered in place
+	// with regsvr32 after the payload is copied.
+	RegisterFiles []string `json:"registerFiles,omitempty"`
+	// Executable, relative to InstallDir, is verified to exist after deploy.
+	Executable string `json:"executable,omitempty"`
 }
 
 // ShortcutConfig controls desktop shortcut creation for an application.

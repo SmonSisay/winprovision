@@ -30,20 +30,30 @@
                    xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State"
                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
 
-            <!-- Wipe disk BEFORE Windows partitioning — fixes Dell PCs with
-                 OEM/recovery partitions or MBR disks that block setup.
-                 list disk  → show available disks (visible in setup logs)
-                 clean      → remove ALL partitions & disk structure
-                 convert gpt→ make it a clean GPT disk (required for UEFI/EFI)
-                 Runs as the FIRST step of the windowsPE pass, so Windows Setup
-                 then partitions the fully-clean disk without errors.
-                 The (echo ... && echo ...) group pipes every line to diskpart
-                 reliably (the old CRLF echo trick could silently skip lines). -->
+            <!-- First: bypass TPM / Secure Boot / RAM checks so Win11 installs
+                 on older hardware. Then wipe disk 0 via a diskpart script file
+                 (writing to X:\dp.txt is reliable in WinPE — the old pipe-based
+                 echo | diskpart approach silently fails in WinPE). -->
             <RunSynchronous>
                 <RunSynchronousCommand wcm:action="add">
                     <Order>1</Order>
-                    <Path>cmd /c (echo list disk&amp;&amp; echo select disk 0&amp;&amp; echo clean&amp;&amp; echo convert gpt&amp;&amp; echo exit) | diskpart</Path>
-                    <Description>List disks, wipe disk 0, convert to GPT before Windows partitioning</Description>
+                    <Path>reg add HKLM\SYSTEM\Setup\LabConfig /v BypassTPMCheck /t REG_DWORD /d 1 /f</Path>
+                    <Description>Bypass TPM 2.0 requirement</Description>
+                </RunSynchronousCommand>
+                <RunSynchronousCommand wcm:action="add">
+                    <Order>2</Order>
+                    <Path>reg add HKLM\SYSTEM\Setup\LabConfig /v BypassSecureBootCheck /t REG_DWORD /d 1 /f</Path>
+                    <Description>Bypass Secure Boot requirement</Description>
+                </RunSynchronousCommand>
+                <RunSynchronousCommand wcm:action="add">
+                    <Order>3</Order>
+                    <Path>reg add HKLM\SYSTEM\Setup\LabConfig /v BypassRAMCheck /t REG_DWORD /d 1 /f</Path>
+                    <Description>Bypass 4 GB RAM requirement</Description>
+                </RunSynchronousCommand>
+                <RunSynchronousCommand wcm:action="add">
+                    <Order>4</Order>
+                    <Path>cmd /c &quot;echo select disk 0 &gt; X:\dp.txt &amp; echo clean &gt;&gt; X:\dp.txt &amp; echo convert gpt &gt;&gt; X:\dp.txt &amp; echo exit &gt;&gt; X:\dp.txt &amp; diskpart /s X:\dp.txt&quot;</Path>
+                    <Description>Wipe disk 0 and convert to GPT via diskpart script file</Description>
                 </RunSynchronousCommand>
             </RunSynchronous>
 
@@ -157,7 +167,7 @@
             <fDenyTSConnections>false</fDenyTSConnections>
         </component>
 
-        <!-- Network settings: skip network location prompt -->
+        <!-- Bypass OOBE network requirement + skip network location prompt -->
         <component name="Microsoft-Windows-Deployment"
                    processorArchitecture="amd64"
                    publicKeyToken="31bf3856ad364e35"
@@ -165,6 +175,13 @@
                    versionScope="nonSxS"
                    xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State"
                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+            <RunSynchronous>
+                <RunSynchronousCommand wcm:action="add">
+                    <Order>1</Order>
+                    <Path>reg add "HKLM\Software\Microsoft\Windows\CurrentVersion\OOBE" /v BypassNRO /t REG_DWORD /d 1 /f</Path>
+                    <Description>Allow offline account / skip network during OOBE</Description>
+                </RunSynchronousCommand>
+            </RunSynchronous>
         </component>
     </settings>
 

@@ -352,6 +352,21 @@ func runInstallerTasks(ctx context.Context, apps []models.AppDefinition, softwar
 		runTask("installer", app.Name, func() models.TaskResult {
 			return installer.Install(ctx, app, softwareDestination)
 		})
+		if app.Deploy != nil {
+			runTask("installer", app.Name+" (deploy)", func() models.TaskResult {
+				installed, reason, _ := installer.IsInstalled(app)
+				if installed {
+					return models.TaskResult{
+						Name:     app.Name + " (deploy)",
+						Module:   "installer",
+						Status:   models.TaskStatusSkipped,
+						Message:  fmt.Sprintf("Installer confirmed install (%s)", reason),
+						Duration: 0,
+					}
+				}
+				return installer.Deploy(ctx, app, softwareDestination)
+			})
+		}
 		if app.DesktopShortcut.Enabled {
 			runTask("shortcut", app.Name+" Shortcut", func() models.TaskResult {
 				return shortcut.CreateDesktopShortcut(app)
@@ -535,6 +550,12 @@ func buildTaskPlan(settings *models.Settings, apps []models.AppDefinition) *task
 			summary: fmt.Sprintf("Install %s", app.Name),
 			count:   1,
 		})
+		if app.Deploy != nil {
+			plan.actions = append(plan.actions, taskPlanEntry{
+				summary: fmt.Sprintf("Deploy %s (fallback)", app.Name),
+				count:   1,
+			})
+		}
 		if app.DesktopShortcut.Enabled {
 			plan.actions = append(plan.actions, taskPlanEntry{
 				summary: fmt.Sprintf("Create desktop shortcut for %s", app.Name),

@@ -4,12 +4,15 @@ package installer
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/SmonSisay/winprovision/internal/copy"
+	"github.com/SmonSisay/winprovision/internal/logging"
 	"github.com/SmonSisay/winprovision/internal/models"
 	"github.com/SmonSisay/winprovision/internal/registry"
 	"github.com/SmonSisay/winprovision/internal/utils"
@@ -17,13 +20,27 @@ import (
 
 var fallbackSilentFlags = [][]string{
 	{"/S"},
+	{"/SILENT"},
+	{"/VERYSILENT"},
 	{"/silent"},
 	{"/quiet"},
 	{"/qn"},
+	{"/passive"},
 	{"/quiet", "/norestart"},
-	{"/S", "/v", "/qn"},
+	{"/qn", "/norestart"},
+	{"/passive", "/norestart"},
+	{"/s", "/v", "/qn"},
+	{"/s", "/v", "/passive"},
+	{"/s", "/v", "/quiet", "/norestart"},
+	{"/SILENT", "/SUPPRESSMSGBOXES"},
+	{"/VERYSILENT", "/SUPPRESSMSGBOXES"},
 	{"--silent"},
+	{"--quiet"},
+	{"--SILENT"},
+	{"--VERYSILENT"},
+	{"-s"},
 	{"-silent"},
+	{"-quiet"},
 	{},
 }
 
@@ -174,16 +191,16 @@ func Install(ctx context.Context, app models.AppDefinition, softwareRoot string)
 		return result
 	}
 
-	// Build list of flag sets to try
+	// Build list of flag sets to try. Explicit args are always tried first.
+	// If all explicit args fail, fallback flags are tried as a last resort
+	// to handle installers whose correct silent flags weren't known at
+	// config time (e.g. old InstallShield, InnoSetup, NSIS variants).
 	var flagSets [][]string
 	explicitArgs := SplitArgs(app.SilentArgs)
 	if len(explicitArgs) > 0 {
-		// App has explicit silent args — only try those, never fall back
-		// to generic flags (e.g. Office would show a help dialog for /S).
 		flagSets = append(flagSets, explicitArgs)
-	} else {
-		flagSets = append(flagSets, fallbackSilentFlags...)
 	}
+	flagSets = append(flagSets, fallbackSilentFlags...)
 
 	var lastErr error
 	for _, flags := range flagSets {
@@ -205,6 +222,250 @@ func Install(ctx context.Context, app models.AppDefinition, softwareRoot string)
 	result.Message = "Installed successfully"
 	result.Duration = time.Since(start)
 	return result
+}
+
+// Deploy installs an application without running an installer by copying a
+// pre-extracted payload into InstallDir and performing post-copy setup
+// (font registration, COM self-registration, system file placement). It is
+// the deterministic fallback for installers that cannot run silently.
+// Issues with fonts or COM registration are reported as warnings in the
+// message but do not fail the task: the payload itself is what matters.
+func Deploy(ctx context.Context, app models.AppDefinition, softwareRoot string) models.TaskResult {
+	start := time.Now()
+	result := models.TaskResult{
+		Name:   app.Name + " (deploy)",
+		Module: moduleName,
+	}
+
+	cfg := app.Deploy
+	if cfg == nil {
+		result.Status = models.TaskStatusSkipped
+		result.Message = "No deploy configuration"
+		result.Duration = time.Since(start)
+		return result
+	}
+
+	appDir := filepath.Join(softwareRoot, filepath.FromSlash(appFolderName(app)))
+	srcDir := filepath.Join(appDir, filepath.FromSlash(cfg.SourceDir))
+	if !utils.DirExists(srcDir) {
+		result.Status = models.TaskStatusFailed
+		result.Message = fmt.Sprintf("Deploy source not found: %s", srcDir)
+		result.Err = fmt.Errorf("deploy source not found: %s", srcDir)
+		result.Duration = time.Since(start)
+		return result
+	}
+
+	destDir := utils.ExpandEnv(cfg.InstallDir)
+	if strings.TrimSpace(destDir) == "" {
+		result.Status = models.TaskStatusFailed
+		result.Message = "Deploy installDir is empty"
+		result.Err = fmt.Errorf("deploy installDir is empty")
+		result.Duration = time.Since(start)
+		return result
+	}
+
+	stats, err := copy.SyncDirectory(srcDir, destDir, logging.NopLogger{})
+	if err != nil {
+		result.Status = models.TaskStatusFailed
+		result.Message = fmt.Sprintf("Failed to copy payload: %v", err)
+		result.Err = err
+		result.Duration = time.Since(start)
+		return result
+	}
+	if stats.Failed > 0 {
+		result.Status = models.TaskStatusFailed
+		result.Message = fmt.Sprintf("Copy failed: Copied=%d Skipped=%d Failed=%d", stats.Copied, stats.Skipped, stats.Failed)
+		result.Err = fmt.Errorf("%d file copy operations failed", stats.Failed)
+		result.Duration = time.Since(start)
+		return result
+	}
+
+	var warnings []string
+
+	if cfg.FontsDir != "" {
+		fontDir := filepath.Join(destDir, filepath.FromSlash(cfg.FontsDir))
+		if err := installFonts(ctx, fontDir); err != nil {
+			warnings = append(warnings, "fonts: "+err.Error())
+		}
+	}
+
+	systemRoot := windowsSystemRoot()
+	for _, rel := range cfg.SystemFiles {
+		srcFile := filepath.Join(srcDir, filepath.FromSlash(rel))
+		if !utils.FileExists(srcFile) {
+			warnings = append(warnings, "missing system file: "+rel)
+			continue
+		}
+		if err := copyToSystemDirs(srcFile, systemRoot); err != nil {
+			warnings = append(warnings, "copy "+rel+" to system dirs: "+err.Error())
+			continue
+		}
+		sysCopy := filepath.Join(systemRoot, "System32", filepath.Base(srcFile))
+		if err := registerComponent(ctx, sysCopy); err != nil {
+			warnings = append(warnings, "register "+rel+": "+err.Error())
+		}
+	}
+
+	for _, rel := range cfg.RegisterFiles {
+		file := filepath.Join(destDir, filepath.FromSlash(rel))
+		if !utils.FileExists(file) {
+			warnings = append(warnings, "missing component: "+rel)
+			continue
+		}
+		if err := registerComponent(ctx, file); err != nil {
+			warnings = append(warnings, "register "+rel+": "+err.Error())
+		}
+	}
+
+	exeVerified := cfg.Executable == ""
+	if cfg.Executable != "" {
+		exePath := filepath.Join(destDir, filepath.FromSlash(cfg.Executable))
+		exeVerified = utils.FileExists(exePath)
+		if !exeVerified {
+			warnings = append(warnings, "executable missing: "+cfg.Executable)
+		}
+	}
+
+	result.Duration = time.Since(start)
+	if exeVerified {
+		result.Status = models.TaskStatusSuccess
+		result.Message = fmt.Sprintf("Deployed %d files to %s", stats.Copied, destDir)
+		if len(warnings) > 0 {
+			result.Message += " (warnings: " + strings.Join(warnings, "; ") + ")"
+		}
+		return result
+	}
+
+	result.Status = models.TaskStatusFailed
+	result.Message = "Deploy incomplete: " + strings.Join(warnings, "; ")
+	result.Err = fmt.Errorf("deploy incomplete for %s: %s", app.Name, strings.Join(warnings, "; "))
+	return result
+}
+
+// windowsSystemRoot returns the Windows directory (C:\Windows by default).
+func windowsSystemRoot() string {
+	root := os.Getenv("SystemRoot")
+	if strings.TrimSpace(root) == "" {
+		root = `C:\Windows`
+	}
+	return root
+}
+
+// installFonts registers every *.ttf font in fontDir with Windows: the file
+// is copied to C:\Windows\Fonts and a value is added under the fonts
+// registry key so the typeface is available system-wide.
+func installFonts(ctx context.Context, fontDir string) error {
+	if !utils.DirExists(fontDir) {
+		return fmt.Errorf("fonts directory not found: %s", fontDir)
+	}
+	quoted := strings.ReplaceAll(fontDir, "'", "''")
+	script := fmt.Sprintf(fontInstallScript, quoted)
+	cmd := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("install fonts via PowerShell: %w", err)
+	}
+	return nil
+}
+
+const fontInstallScript = `
+$dir = '%s'
+$fonts = Join-Path $env:WINDIR 'Fonts'
+$reg = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts'
+Add-Type -AssemblyName System.Drawing
+$files = @(Get-ChildItem -Path $dir -File | Where-Object { $_.Extension -match '^\.ttf$' })
+foreach ($f in $files) {
+  try {
+    Copy-Item -Path $f.FullName -Destination (Join-Path $fonts $f.Name) -Force
+    $family = $f.BaseName
+    try {
+      $fc = New-Object System.Drawing.Text.PrivateFontCollection
+      $fc.AddFontFile($f.FullName)
+      if ($fc.Families.Count -gt 0) { $family = $fc.Families[0].Name }
+      $fc.Dispose()
+    } catch { }
+    New-ItemProperty -Path $reg -Name ($family + ' (TrueType)') -Value $f.Name -PropertyType String -Force | Out-Null
+  } catch {
+    Write-Warning ("Font " + $f.Name + ": " + $_.Exception.Message)
+  }
+}
+Write-Output ("INSTALLED_FONTS=" + $files.Count)
+`
+
+// copyToSystemDirs copies a file into both System32 and SysWOW64 so that
+// both 64-bit and 32-bit processes can load the component.
+func copyToSystemDirs(src, systemRoot string) error {
+	base := filepath.Base(src)
+	copied := false
+	for _, dir := range []string{"System32", "SysWOW64"} {
+		dest := filepath.Join(systemRoot, dir, base)
+		if err := copySingleFile(src, dest); err != nil {
+			return err
+		}
+		copied = true
+	}
+	if !copied {
+		return fmt.Errorf("no system directory available")
+	}
+	return nil
+}
+
+func copySingleFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return fmt.Errorf("open source file: %w", err)
+	}
+	defer in.Close()
+	info, err := in.Stat()
+	if err != nil {
+		return fmt.Errorf("stat source file: %w", err)
+	}
+	if err := utils.EnsureDir(filepath.Dir(dst)); err != nil {
+		return err
+	}
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, info.Mode())
+	if err != nil {
+		return fmt.Errorf("create destination file: %w", err)
+	}
+	defer out.Close()
+	if _, err := io.Copy(out, in); err != nil {
+		return fmt.Errorf("copy file contents: %w", err)
+	}
+	if err := out.Sync(); err != nil {
+		return fmt.Errorf("sync destination file: %w", err)
+	}
+	return nil
+}
+
+// registerComponent self-registers a COM component (OCX/DLL) with regsvr32.
+// 32-bit components require the SysWOW64 regsvr32 on 64-bit Windows, so both
+// are attempted and the first success wins.
+func registerComponent(ctx context.Context, path string) error {
+	if !utils.FileExists(path) {
+		return fmt.Errorf("component not found: %s", path)
+	}
+	root := windowsSystemRoot()
+	regsvrs := []string{
+		filepath.Join(root, "SysWOW64", "regsvr32.exe"),
+		filepath.Join(root, "System32", "regsvr32.exe"),
+	}
+	var lastErr error
+	for _, regsvr := range regsvrs {
+		if !utils.FileExists(regsvr) {
+			continue
+		}
+		cmd := exec.CommandContext(ctx, regsvr, "/s", path)
+		if err := cmd.Run(); err == nil {
+			return nil
+		} else {
+			lastErr = err
+		}
+	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("no regsvr32.exe found under %s", root)
+	}
+	return lastErr
 }
 
 // SplitArgs parses a shell-style argument string, respecting double-quoted
