@@ -199,8 +199,9 @@ func Install(ctx context.Context, app models.AppDefinition, softwareRoot string)
 	explicitArgs := SplitArgs(app.SilentArgs)
 	if len(explicitArgs) > 0 {
 		flagSets = append(flagSets, explicitArgs)
+	} else {
+		flagSets = append(flagSets, fallbackSilentFlags...)
 	}
-	flagSets = append(flagSets, fallbackSilentFlags...)
 
 	var lastErr error
 	for _, flags := range flagSets {
