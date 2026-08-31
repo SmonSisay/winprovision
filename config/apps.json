@@ -64,8 +64,9 @@
     {
       "name": "Visual Geez",
       "installerPath": "VisualGeez/setup.exe",
-      "silentArgs": "/s",
+      "silentArgs": "/S /v/qn",
       "version": "latest",
+      "attendedFallback": true,
       "desktopShortcut": {
         "enabled": false
       },
@@ -78,8 +79,16 @@
       "installerPath": "PowerGeez/iNSTALL Ge'ez 10.exe",
       "silentArgs": "/s",
       "version": "latest",
+      "attendedFallback": true,
       "desktopShortcut": {
         "enabled": false
+      },
+      "deploy": {
+        "sourceDir": "payload",
+        "installDir": "C:\\Program Files\\Power Geez",
+        "fontsDir": "FontsFolder",
+        "registerFiles": ["Calendar.ocx", "SkinControl.ocx", "Flash_Button.ocx", "pgdll.dll"],
+        "executable": "pg2010.exe"
       },
       "detection": {
         "installDir": "C:\\Program Files\\Power Geez"
@@ -110,8 +119,8 @@
       }
     },
     {
-      "name": "Printer Drivers",
-      "installerPath": "PrinterDrivers/",
+      "name": "Copy-only Files",
+      "installerPath": "CopyOnly/",
       "copyOnly": true,
       "desktopShortcut": {
         "enabled": false

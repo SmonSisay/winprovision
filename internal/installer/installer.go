@@ -214,6 +214,21 @@ func Install(ctx context.Context, app models.AppDefinition, softwareRoot string)
 	}
 
 	if result.Status != models.TaskStatusSuccess {
+		// Try the attended wizard fallback last: some installers (e.g.
+		// Power Geez's ADVINSTSFX bootstrapper) cannot run silently at all,
+		// so the wizard is shown for the operator to complete manually.
+		if app.AttendedFallback {
+			wizardErr := runInstallerAttended(ctx, installerPath)
+			if wizardErr == nil {
+				result.Status = models.TaskStatusSuccess
+				result.Message = "Installed successfully (attended wizard)"
+				result.Duration = time.Since(start)
+				return result
+			}
+			lastErr = wizardErr
+		}
+
+		result.Status = models.TaskStatusFailed
 		result.Message = fmt.Sprintf("All install attempts failed: %v", lastErr)
 		result.Err = fmt.Errorf("install %s: %w", installerPath, lastErr)
 		result.Duration = time.Since(start)
@@ -223,6 +238,23 @@ func Install(ctx context.Context, app models.AppDefinition, softwareRoot string)
 	result.Message = "Installed successfully"
 	result.Duration = time.Since(start)
 	return result
+}
+
+// runInstallerAttended launches the installer without any silent flags so the
+// operating system / installer wizard UI appears for the operator to complete
+// manually. It waits for the process to exit.
+func runInstallerAttended(ctx context.Context, exePath string) error {
+	ext := strings.ToLower(filepath.Ext(exePath))
+	var cmd *exec.Cmd
+	if ext == ".msi" {
+		cmd = exec.CommandContext(ctx, "msiexec.exe", "/i", exePath)
+	} else {
+		cmd = exec.CommandContext(ctx, exePath)
+	}
+	cmd.Dir = filepath.Dir(exePath)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
 }
 
 // Deploy installs an application without running an installer by copying a
@@ -375,7 +407,7 @@ $dir = '%s'
 $fonts = Join-Path $env:WINDIR 'Fonts'
 $reg = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts'
 Add-Type -AssemblyName System.Drawing
-$files = @(Get-ChildItem -Path $dir -File | Where-Object { $_.Extension -match '^\.ttf$' })
+$files = @(Get-ChildItem -Path $dir -File | Where-Object { $_.Extension -imatch '^\.ttf$' })
 foreach ($f in $files) {
   try {
     Copy-Item -Path $f.FullName -Destination (Join-Path $fonts $f.Name) -Force

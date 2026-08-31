@@ -190,6 +190,7 @@ func (d *Display) ShowFinalReport() {
 	info.Println("  • Activate Kaspersky")
 	info.Println()
 	info.Println("  Enjoy your day!")
+	info.Println("  July 2026 G.C")
 	info.Println("  ─────────────────────────────────────────────")
 	fmt.Println()
 

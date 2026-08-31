@@ -29,6 +29,8 @@ USB_ROOT/
 │   │   └── FirefoxSetup.exe
 │   ├── MicrosoftOffice/
 │   │   └── setup.exe
+│   ├── CopyOnly/             ← copied as-is, never installed (printers/portable)
+│   │   └── ...               ← any folder to just copy
 │   └── ...                   ← drop any installer folder here
 ├── sources/
 │   └── sxs/                  ← .NET 3.5 source files (optional)
@@ -157,6 +159,8 @@ Each application entry supports:
 | `installerPath` | string | Yes | Path to installer (relative to `software/` folder) |
 | `silentArgs` | string | Yes | Silent install arguments |
 | `version` | string | Yes | Version string (used for display only) |
+| `attendedFallback` | bool | No | If silent install fails, relaunch the installer without silent flags so the wizard UI appears for manual completion |
+| `copyOnly` | bool | No | Copy the app folder to the destination but never run its installers (e.g. printer drivers or portable tools) |
 | `desktopShortcut.enabled` | bool | Yes | Whether to create a desktop shortcut |
 | `desktopShortcut.name` | string | When enabled | Shortcut name (without `.lnk` extension) |
 | `desktopShortcut.targetPath` | string | When enabled | Full path to the shortcut target |

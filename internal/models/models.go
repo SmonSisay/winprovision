@@ -65,15 +65,16 @@ type AppsConfig struct {
 // application is not detected afterwards, the pre-extracted payload under
 // Deploy.SourceDir is deployed directly (fonts, COM registration, etc.).
 type AppDefinition struct {
-	Name            string           `json:"name"`
-	InstallerPath   string           `json:"installerPath"`
-	SilentArgs      string           `json:"silentArgs"`
-	Version         string           `json:"version"`
-	AlwaysInstall   bool             `json:"alwaysInstall"`
-	CopyOnly        bool             `json:"copyOnly"`
-	DesktopShortcut ShortcutConfig   `json:"desktopShortcut"`
-	Detection       DetectionRule    `json:"detection"`
-	Deploy          *DeployConfig    `json:"deploy,omitempty"`
+	Name             string          `json:"name"`
+	InstallerPath    string          `json:"installerPath"`
+	SilentArgs       string          `json:"silentArgs"`
+	Version          string          `json:"version"`
+	AlwaysInstall    bool            `json:"alwaysInstall"`
+	CopyOnly         bool            `json:"copyOnly"`
+	AttendedFallback bool            `json:"attendedFallback"`
+	DesktopShortcut  ShortcutConfig  `json:"desktopShortcut"`
+	Detection        DetectionRule   `json:"detection"`
+	Deploy           *DeployConfig   `json:"deploy,omitempty"`
 }
 
 // DeployConfig describes a deterministic, installer-free installation of a
