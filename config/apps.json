@@ -83,13 +83,6 @@
       "desktopShortcut": {
         "enabled": false
       },
-      "deploy": {
-        "sourceDir": "payload",
-        "installDir": "C:\\Program Files\\Power Geez",
-        "fontsDir": "FontsFolder",
-        "registerFiles": ["Calendar.ocx", "SkinControl.ocx", "Flash_Button.ocx", "pgdll.dll"],
-        "executable": "pg2010.exe"
-      },
       "detection": {
         "installDir": "C:\\Program Files\\Power Geez"
       }
