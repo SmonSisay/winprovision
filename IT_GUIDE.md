@@ -1,188 +1,373 @@
-# WinProvision — IT Officer User Guide
+# WinProvision — IT Officer & System Administrator User Guide
 
-This guide explains how to use the **WinProvision** USB provisioning tool to set up a
-Windows 11 computer with all the standard software automatically. It is written for
-IT officers and technicians — **no programming knowledge is required**.
+This comprehensive manual explains how to configure, deploy, and troubleshoot the **WinProvision** self-contained Windows 11 provisioning tool. It is designed for IT Officers, Systems Administrators, and Field Technicians responsible for mass workstation setup.
 
 ---
 
-## 1. What is WinProvision?
+## 1. Executive Summary & Purpose
 
-WinProvision is a small program (`Setup.exe`) that you put on a USB drive together with
-the installers. When you plug the USB into a computer and run it, it automatically:
+**WinProvision** is an automated, offline Windows 11 setup utility (`Setup.exe`). It eliminates manual software installation and system configuration by running directly from removable USB media.
 
-1. **Copies** all the software files from the USB onto the PC.
-2. **Configures Windows** — turns off the firewall, enables Remote Desktop, enables the
-   Administrator account, and shows file extensions (as configured).
-3. **Installs** the applications one by one, silently in the background.
-4. **Creates desktop shortcuts** for the installed programs.
-5. **Checks what is already installed** so you can safely run it again — it skips
-   anything already done (no double installation).
-6. **Writes a detailed log** so you can see exactly what happened.
+### Key Capabilities
 
-The whole thing works **offline** — it does not need an internet connection. All
-installers are stored on the USB.
+- **Offline Execution:** Operates with zero network dependency. All installers and system components (.NET Framework 3.5) are hosted directly on the USB drive.
+- **Idempotent Operations:** Built-in application detection (Registry keys, executable paths, install directories, product versions) prevents duplicate installations. Re-running the tool safely skips completed tasks.
+- **System Hardening & Configuration:** Automates Windows Firewall state, Remote Desktop Protocol (RDP), local Administrator account enablement, and File Explorer preferences.
+- **Automated & Attended Fallbacks:** Supports fully silent background installations as well as automatic attended fallbacks for legacy installers requiring GUI wizard interaction.
+- **Structured Logging & Diagnostics:** Generates machine-readable, time-stamped log reports for operational auditing.
 
 ---
 
-## 2. What's on the USB drive?
+## 2. Provisioning Time Estimations & Benchmarks
+
+Using WinProvision dramatically reduces the time required to provision new workstations.
+
+### Task-by-Task Execution Breakdown
+
+| Provisioning Task                                                | Estimated Time (USB 3.0 / SSD) | Factors & Performance Notes                                |
+| :--------------------------------------------------------------- | :----------------------------: | :--------------------------------------------------------- |
+| **Startup & Elevation Check**                                    |          ~2–5 seconds          | Validates UAC elevation and loads JSON config files.       |
+| **Software Directory Sync (`software/` $\rightarrow$ Local PC)** |         ~30–90 seconds         | Depends on total size of installers and USB read speed.    |
+| **Windows OS Configuration (Firewall, RDP, Explorer)**           |         ~5–10 seconds          | Executes netsh and registry modifications instantly.       |
+| **.NET Framework 3.5 Installation (DISM)**                       |         ~45–90 seconds         | Installs `.cab` package from local `sources/sxs/` offline. |
+| **Standard App Installations (Chrome, Firefox, 7-Zip)**          |     ~15–30 seconds per app     | Silent background execution.                               |
+| **Large App Packages (Microsoft Office, Kaspersky)**             |      ~2–4 minutes per app      | Large binary decompression and registration.               |
+| **Desktop Shortcut Creation**                                    |          ~2–5 seconds          | COM shortcut creation for configured apps.                 |
+
+### Performance Overview
+
+Overall provisioning performance depends on the number and size of the software packages being copied and executed (e.g. large Office suites or endpoint security packages take longer than lightweight utilities). However, even with multiple heavy applications, WinProvision executes super fast compared to manual workstation setup, dramatically cutting deployment time. Additionally, re-running the tool on an already provisioned machine completes in seconds thanks to intelligent detection skipping.
+
+> [!TIP]
+> **Performance Tip:** Using a **USB 3.0 or USB 3.2 Flash Drive** plugged into a USB 3.0 port (blue port) on the PC significantly accelerates software file copying and DISM installation times compared to older USB 2.0 drives.
+
+---
+
+## 3. USB Directory Architecture & Layout
+
+To ensure seamless execution, the USB drive payload must adhere to the following standard directory structure:
 
 ```
-USB DRIVE (e.g. E:\)
-├── Setup.exe              ← THE tool. You run this.
+USB_ROOT (e.g., E:\ or F:\)
+├── Setup.exe                  ← Primary provisioning executable (Run as Administrator)
 │
-├── config/                ← Configuration (usually you don't need to touch this)
-│   ├── settings.json      ← Windows settings + destination folder
-│   └── apps.json          ← the list of applications to install
+├── config/                    ← Central configuration control
+│   ├── settings.json          ← Windows OS configuration, logging preferences, target drive rules
+│   └── apps.json              ← Master application catalog, detection rules, silent flags
 │
-├── software/              ← the installers (folders, one per application)
-│   ├── Chrome/            ← Chrome installer
-│   ├── Firefox/           ← Firefox installer
-│   ├── MicrosoftOffice/   ← Office installer
-│   ├── AdobeReader/
-│   ├── Skype4Business/
-│   ├── VisualGeez/
-│   ├── PowerGeez/
-│   ├── Kaspersky Endpoint installer 12.3/
-│   ├── FortiNAC/
-│   ├── CopyOnly/          ← files that are copied but NOT installed (e.g. printer drivers)
-│   └── ...
+├── software/                  ← Application installers & software packages (One subfolder per app)
+│   ├── Chrome/                ← Google Chrome installer package
+│   │   └── ChromeSetup.exe
+│   ├── Firefox/               ← Mozilla Firefox installer package
+│   │   └── FirefoxSetup.exe
+│   ├── MicrosoftOffice/       ← Microsoft Office deployment folder
+│   │   └── setup.exe
+│   ├── AdobeReader/           ← Adobe Acrobat Reader installer
+│   ├── Skype4Business/        ← Skype for Business installer
+│   ├── VisualGeez/            ← Legacy Ethiopic font installer package
+│   ├── PowerGeez/             ← Power Geez font installer package
+│   ├── Kaspersky/             ← Kaspersky Endpoint Security installer package
+│   ├── FortiNAC/              ← FortiNAC persistent agent installer
+│   └── CopyOnly/              ← Static directory for non-executable payloads (e.g., printer drivers)
 │
 ├── sources/
-│   └── sxs/               ← .NET Framework 3.5 (already included — no extra USB needed)
+│   └── sxs/                   ← Local .NET Framework 3.5 payload (NetFx3.cab)
 │
-└── logs/
-    └── setup.log          ← created after running — the report of what happened
+├── assets/                    ← Optional deployment resources (wallpapers, scripts, icons)
+│
+└── logs/                      ← Created automatically at runtime
+    └── setup.log              ← Operational execution log report
 ```
+
+### Folder Breakdown & Usage Rules
+
+| Directory            | Purpose                                                     | Administrative Rules                                                             |
+| :------------------- | :---------------------------------------------------------- | :------------------------------------------------------------------------------- |
+| `config/`            | Stores JSON configuration files.                            | Must contain valid JSON syntax. Back up files before editing.                    |
+| `software/`          | Contains installer subdirectories.                          | Each app gets its own subfolder. Unlisted folders are subject to auto-discovery. |
+| `software/CopyOnly/` | Stores static files/drivers to be copied without execution. | Used for printer drivers, portable tools, and static documentation.              |
+| `sources/sxs/`       | Holds the `.cab` package for .NET 3.5 offline installation. | Ensure `microsoft-windows-netfx3-ondemand-package*.cab` is present.              |
+| `logs/`              | Runtime log directory.                                      | Automatically generated; inspect `setup.log` for troubleshooting.                |
 
 ---
 
-## 3. How to use it (step by step)
+## 4. Operational Workflow (Step-by-Step Deployment)
 
-1. **Plug the USB into the PC** you want to set up.
-2. Make sure the PC is on and you can log in as **Administrator** or an account with
-   Administrator rights. The tool **will not run** without Administrator privileges.
-3. Open the USB drive (e.g. `E:\`) in File Explorer.
-4. **Double-click `Setup.exe`**.
-   - If a security warning appears, choose **Run / Yes**.
-5. The tool shows a screen with:
-   - The version of the tool
-   - The Windows version and logged-in user
-   - Where it will copy the software
-   - A summary of all the actions it is about to do
-6. It asks you to **confirm** before starting. Press **Y** then Enter (or click confirm).
-7. Watch the progress. Each task shows its status:
-   - **SUCCESS** — done ✔
-   - **SKIPPED** — already done, not repeated
-   - **FAILED** — something went wrong
-   - **WARNING** — partly done, check the details
-8. When it finishes, the final summary is shown and a copy is saved to `logs/setup.log`.
+### Step 1: USB Insertion & Elevation Verification
 
-> **Note for two special programs (Visual Geez and Power Geez):**
-> These old Geez (Ethiopic font) programs cannot install silently on their own.
-> If the silent install fails, the **installer window will pop up automatically**.
-> When that happens, **click through the wizard yourself** (Next → Next → Finish) to
-> complete the installation manually. This is expected — it is designed that way.
+1. Insert the prepared WinProvision USB drive into the target Windows 11 machine.
+2. Log into an account with **Administrator privileges**.
+3. Open File Explorer, navigate to the USB root directory (e.g., `E:\`), right-click `Setup.exe`, and select **Run as administrator**.
 
----
+> [!IMPORTANT]
+> WinProvision strictly requires UAC elevation. If launched without Administrator privileges, execution immediately halts with **Exit Code 2**.
 
-## 4. After it finishes — checking the result
+### Step 2: System Banner & Target Drive Selection
 
-The most important file is the log:
+Upon startup, the console interface displays:
 
-```
-logs/setup.log   (on the USB drive)
-```
+- Utility version and build metadata.
+- Detected Windows OS version and active user identity.
+- Target installation path (Secondary drive e.g., `D:\Softwares`, or user-prompted custom folder if no secondary drive exists).
+- Execution plan summary detailing planned OS tweaks and app installations.
 
-Open it with Notepad. Every line is one step, like this:
+### Step 3: Execution Confirmation
 
-```
-timestamp=... module=installer action=Google Chrome duration=12s status=SUCCESS message="Installed successfully"
-```
+Review the displayed task plan. Prompt response:
 
-How to read it:
+- Press **`Y`** and Enter to initiate execution.
+- Press **`N`** to safely abort execution without making changes.
 
-| word | meaning |
-|------|---------|
-| `module` | which part of the tool did this (e.g. `copy`, `windows`, `installer`, `dism`) |
-| `action` | the specific item (e.g. the app name) |
-| `status` | `SUCCESS` / `SKIPPED` / `FAILED` / `WARNING` |
-| `message` | short explanation of the outcome |
-| `duration` | how long that step took |
+### Step 4: Monitoring Progress & Task Statuses
 
-**Good sign:** the last line says `status=SUCCESS message="Provisioning completed..."`.
-**Look at** any line where `status=FAILED` — that tells you which app / setting needs attention.
+As tasks execute, real-time status indicators report progress:
+
+| Status Code   | Meaning                                              | Technical Action Taken                                           |
+| :------------ | :--------------------------------------------------- | :--------------------------------------------------------------- |
+| **`SUCCESS`** | Task completed successfully.                         | Setting applied or installer finished with return code `0`.      |
+| **`SKIPPED`** | Pre-check passed; item already configured/installed. | Detection rule matched; installer execution avoided.             |
+| **`WARNING`** | Task completed with non-fatal issue.                 | Non-critical step encountered a minor fallback condition.        |
+| **`FAILED`**  | Task encountered an error and could not complete.    | Caught by panic/error recovery; execution proceeds to next task. |
 
 ---
 
-## 5. The configuration — explained simply
+## 5. Configuration Deep-Dive (`config/settings.json`)
 
-Everything is controlled by two small text files in the `config/` folder. They use JSON
-format (simple text with `{`, `}`, `"` and `,`). You can edit them with Notepad.
+`config/settings.json` controls system-level settings, destination paths, and logging levels.
 
-> **Tip:** before editing, make a backup copy of the original file.
-
-### 5.1 `config/settings.json` — the Windows settings
-
-| Block | Setting | What it does |
-|-------|---------|--------------|
-| `destination.folderName` | `"Softwares"` | Where on the PC the software is copied (a folder named `Softwares`) |
-| `windows.disableFirewall` | `true`/`false` | Turn off the Windows Firewall |
-| `windows.enableRemoteDesktop` | `true`/`false` | Allow Remote Desktop connections to the PC |
-| `windows.enableAdministrator` | `true`/`false` | Activate the built-in Administrator account |
-| `windows.administratorPassword` | `"..."` | Password for the Administrator account |
-| `windows.installDotNet35` | `true`/`false` | Try to install .NET Framework 3.5 from the USB |
-| `windows.disableWindowsUpdate` | `true`/`false` | Turn Windows Update to manual |
-| `logging.file` | `"logs/setup.log"` | Where the log file is saved |
-
-Most of the time you do **not** need to change anything here.
-
-### 5.2 `config/apps.json` — the list of applications
-
-This file lists every application that will be installed. **To add a new application**,
-you create one "block" like the examples below.
-
-#### A normal app (installed silently)
+### Full Schema Reference & Types
 
 ```json
 {
-  "name": "Google Chrome",
-  "installerPath": "Chrome/ChromeStandaloneSetup64.exe",
-  "silentArgs": "/silent /install",
-  "desktopShortcut": {
-    "enabled": false
+  "destination": {
+    "promptIfNoSecondaryDrive": true,
+    "folderName": "Softwares"
   },
-  "detection": {
-    "executablePath": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
+  "windows": {
+    "disableFirewall": true,
+    "enableRemoteDesktop": true,
+    "enableAdministrator": true,
+    "administratorPassword": "",
+    "installDotNet35": true,
+    "showFileExtensions": true,
+    "showHiddenFiles": true
+  },
+  "logging": {
+    "file": "logs/setup.log",
+    "level": "info"
   }
 }
 ```
 
-#### An app that needs a person to click the wizard (like Geez)
+### What IT Officers Can Configure
+
+1. **Software Destination (`destination`):**
+   - `folderName`: Sets the subfolder name on the target drive where installer source files are backed up (default: `"Softwares"`).
+   - `promptIfNoSecondaryDrive`: When set to `true`, if the target PC has only a single drive (`C:`), WinProvision prompts the technician to choose or confirm a destination folder.
+
+2. **Windows System & Security Policies (`windows`):**
+   - `disableFirewall`: Set to `true` to disable Windows Firewall across Domain, Private, and Public profiles for uninhibited network setup.
+   - `enableRemoteDesktop`: Set to `true` to enable Remote Desktop Protocol (RDP) and open port 3389 in Windows Firewall.
+   - `enableAdministrator`: Set to `true` to activate the built-in local Administrator account.
+   - `installDotNet35`: Set to `true` to install .NET Framework 3.5 offline via DISM using `sources/sxs/`.
+   - `showFileExtensions`: Set to `true` to configure File Explorer to show file extensions (e.g., `.exe`, `.json`).
+   - `showHiddenFiles`: Set to `true` to reveal hidden system files and directories in File Explorer.
+
+---
+
+## 6. Administrator Password Management & Security
+
+IT Officers can configure the password for the built-in local Administrator account using one of two methods:
+
+### Method 1: Environment Variable (Recommended for Enterprise / Production)
+
+To prevent storing sensitive plain-text passwords on a shared USB drive, set the `ADMIN_PASSWORD` environment variable in PowerShell or Command Prompt before running `Setup.exe`:
+
+**PowerShell (Run as Administrator):**
+
+```powershell
+$env:ADMIN_PASSWORD="YourSecurePassword123!"
+.\Setup.exe
+```
+
+**Command Prompt (Run as Administrator):**
+
+```cmd
+set ADMIN_PASSWORD=YourSecurePassword123!
+Setup.exe
+```
+
+### Method 2: Configuration File (`settings.json`) (Development / Lab Use Only)
+
+Set the password in `config/settings.json`:
+
+```json
+"windows": {
+  "enableAdministrator": true,
+  "administratorPassword": "YourSecurePassword123!"
+}
+```
+
+> [!SECURITY]
+> **Resolution Priority:** WinProvision checks `ADMIN_PASSWORD` environment variable first. If set, it overrides any password in `settings.json`.
+> **Security Protection:** WinProvision sets the Administrator password via native Win32 APIs (`NetUserSetInfo`), preventing password strings from appearing in system process lists or command-line logs.
+
+---
+
+## 7. Application Catalog Management (`config/apps.json`)
+
+`config/apps.json` contains the master array of application deployment definitions.
+
+### Master Application Entry Schema
 
 ```json
 {
-  "name": "Power Geez",
-  "installerPath": "PowerGeez/iNSTALL Ge'ez 10.exe",
-  "silentArgs": "/s",
-  "attendedFallback": true,
-  "desktopShortcut": {
-    "enabled": false
-  },
-  "detection": {
-    "installDir": "C:\\Program Files\\Power Geez"
+  "applications": [
+    {
+      "name": "Google Chrome",
+      "installerPath": "Chrome/ChromeStandaloneSetup64.exe",
+      "silentArgs": "/silent /install",
+      "version": "latest",
+      "attendedFallback": false,
+      "copyOnly": false,
+      "desktopShortcut": {
+        "enabled": false
+      },
+      "detection": {
+        "executablePath": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
+      }
+    }
+  ]
+}
+```
+
+### Parameter Reference & Rules
+
+| Field                        | Type      | Required    | Description                                                                        |
+| :--------------------------- | :-------- | :---------- | :--------------------------------------------------------------------------------- |
+| `name`                       | `string`  | **Yes**     | Display name shown in execution logs and console progress.                         |
+| `installerPath`              | `string`  | **Yes**     | Path to installer executable **relative to `software/` folder**.                   |
+| `silentArgs`                 | `string`  | **Yes**     | Silent command-line flags (e.g., `/S`, `/silent`, `/qn`, `/VERYSILENT`).           |
+| `version`                    | `string`  | **Yes**     | Display version string for audit logs.                                             |
+| `attendedFallback`           | `boolean` | No          | If `true`, pops up installer GUI if silent install fails or returns non-zero code. |
+| `copyOnly`                   | `boolean` | No          | If `true`, copies files to target drive without executing installer.               |
+| `desktopShortcut.enabled`    | `boolean` | **Yes**     | Controls whether WinProvision generates a desktop shortcut.                        |
+| `desktopShortcut.name`       | `string`  | Conditional | Name of shortcut icon (omitting `.lnk`). Required if `enabled` is `true`.          |
+| `desktopShortcut.targetPath` | `string`  | Conditional | Full absolute path to target executable on local system drive (`C:\...`).          |
+| `detection`                  | `object`  | **Yes**     | Object containing at least one valid detection check method.                       |
+
+---
+
+## 8. Understanding Desktop Shortcuts & The Chrome Case Study
+
+### Why is Chrome's `desktopShortcut.enabled` set to `false`?
+
+> [!NOTE]
+> **Key Insight:** Standard offline installers like Google Chrome (`ChromeStandaloneSetup64.exe`), Mozilla Firefox, and Adobe Acrobat Reader **natively create their own Desktop shortcut** during their silent installation process.
+>
+> If WinProvision's `desktopShortcut.enabled` were set to `true` for Google Chrome, WinProvision would attempt to create a second shortcut after installation finishes. This results in **duplicate shortcut icons** on the user's desktop (e.g., `Google Chrome.lnk` and `Google Chrome (1).lnk`).
+
+### Rule of Thumb for IT Officers:
+
+- **Set `"enabled": false`** when the software installer automatically creates a desktop icon during installation (e.g., Chrome, Firefox, VLC, Adobe Reader).
+- **Set `"enabled": true`** when deploying custom tools, portable applications, or silent installers that do **not** automatically create a desktop shortcut.
+
+---
+
+## 9. Detection Strategies (Preventing Re-Installations)
+
+WinProvision checks detection rules before running any installer. If **any** defined rule returns `true`, the installer is skipped.
+
+### Supported Detection Types
+
+#### 1. Executable Path Detection (Most Common)
+
+Checks if the target binary exists on the system drive:
+
+```json
+"detection": {
+  "executablePath": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
+}
+```
+
+#### 2. Installation Directory Detection
+
+Checks if the application root folder exists:
+
+```json
+"detection": {
+  "installDir": "C:\\Program Files\\Power Geez"
+}
+```
+
+#### 3. Windows Registry Key Detection
+
+Checks for existence of registry key and value (HKLM or HKCU):
+
+```json
+"detection": {
+  "registry": {
+    "key": "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{CE2CDD12-0124-4B7E-8D4B-EDD67B276E0E}",
+    "valueName": "DisplayName"
   }
 }
 ```
 
-The `"attendedFallback": true` line means: *try silent first; if that fails, pop up the
-installer window so someone can finish it by hand.*
+#### 4. Product Version Check
 
-#### A "copy only" folder (files that are copied but never installed)
+Validates registry version string against minimum required version:
+
+```json
+"detection": {
+  "productVersion": "12.3.0.495"
+}
+```
+
+> [!CAUTION]
+> In JSON, all Windows backslashes must be escaped with a double backslash (`\\`). For example: `C:\\Program Files\\App\\app.exe`. Single backslashes break JSON parsing.
+
+---
+
+## 10. Common IT Officer Playbooks & Recipes
+
+### Scenario A: Adding a New Application (e.g., 7-Zip)
+
+1. Create a folder `software/7Zip/` and place `7z2301-x64.exe` inside it.
+2. Open `config/apps.json` and append the following object to `"applications"`:
 
 ```json
 {
-  "name": "Copy-only Files",
+  "name": "7-Zip",
+  "installerPath": "7Zip/7z2301-x64.exe",
+  "silentArgs": "/S",
+  "version": "23.01",
+  "desktopShortcut": {
+    "enabled": false
+  },
+  "detection": {
+    "executablePath": "C:\\Program Files\\7-Zip\\7zFM.exe"
+  }
+}
+```
+
+3. Save the file and run `Setup.exe`.
+
+### Scenario B: Configuring Attended Fallback for Legacy Packages (e.g., Ethiopic Geez Fonts)
+
+Certain legacy packages (e.g., Visual Geez, Power Geez) do not support headless silent installation.
+
+1. Set `"attendedFallback": true` in `apps.json`.
+2. When WinProvision executes, it attempts silent execution (`/s`). If unattended setup fails, WinProvision automatically relaunches the installer without silent switches, bringing up the GUI setup wizard.
+3. The field technician clicks through the GUI wizard (**Next $\rightarrow$ Next $\rightarrow$ Finish**). Once closed, WinProvision resumes automatic provisioning.
+
+### Scenario C: Deploying Non-Executable Payloads (Printer Drivers, Portable Tools)
+
+1. Place driver files inside `USB_ROOT/software/CopyOnly/` (or create a dedicated folder like `software/PrinterDrivers/`).
+2. Add a `copyOnly` entry to `apps.json`:
+
+```json
+{
+  "name": "Printer Drivers Package",
   "installerPath": "CopyOnly/",
   "copyOnly": true,
   "desktopShortcut": {
@@ -191,98 +376,83 @@ installer window so someone can finish it by hand.*
 }
 ```
 
-This is used for things like **printer drivers** — you just want the files delivered to
-the PC, not automatically installed.
+3. WinProvision syncs the directory to `<TargetDrive>\Softwares\CopyOnly\` without running any setup executables.
 
 ---
 
-## 6. Field-by-field reference (for `apps.json`)
+## 11. Log Analysis & Diagnostics (`logs/setup.log`)
 
-| Field | Required | What it means |
-|-------|----------|---------------|
-| `name` | Yes | The name shown in the progress and log |
-| `installerPath` | Yes | Location of the installer, *relative to the `software/` folder* |
-| `silentArgs` | Yes | The command-line switches that make the app install quietly |
-| `version` | Yes | Just a label for display |
-| `attendedFallback` | No | `true` = if silent fails, show the wizard for manual install |
-| `copyOnly` | No | `true` = copy the folder only, never run the installer |
-| `desktopShortcut.enabled` | Yes | `true` = create a desktop shortcut |
-| `desktopShortcut.targetPath` | When enabled | Full path to the app's `.exe` for the shortcut |
-| `detection.*` | Yes (at least one) | How the tool knows the app is already installed |
+WinProvision generates structured line-formatted log files. Every operational step is logged with time, module, action, duration, status, and detail message.
 
-### Understanding `installerPath`
-It is always relative to the `software/` folder. So if the installer sits in
-`software/Chrome/ChromeStandaloneSetup64.exe`, you write
-`"installerPath": "Chrome/ChromeStandaloneSetup64.exe"`.
+### Sample Log Entry Structure
 
-### Understanding `detection` (very useful)
-This is how the tool decides "is this already installed?" before it runs the installer.
-If the app is detected, the tool **skips** it. To add a NEW app:
+```
+timestamp=2026-09-03T00:00:00+03:00 level=info module=installer action="Google Chrome" duration=14s status=SUCCESS message="Application installed successfully"
+timestamp=2026-09-03T00:00:14+03:00 level=info module=installer action="Power Geez" duration=32s status=WARNING message="Silent install failed; attended fallback completed by operator"
+timestamp=2026-09-03T00:00:46+03:00 level=error module=dism action="DotNet35" duration=5s status=FAILED message="Payload NetFx3.cab not found in sources/sxs"
+```
 
-- If you know where the program installs to, use:
-  ```json
-  "detection": { "installDir": "C:\\Program Files\\MyApp" }
-  ```
-- If you know the main program file, use:
-  ```json
-  "detection": { "executablePath": "C:\\Program Files\\MyApp\\myapp.exe" }
-  ```
+### Log Key Reference
 
-> **Important:** In JSON, backslashes in paths must be written as **double** backslashes,
-> e.g. `C:\\Program Files\\MyApp`. Forgetting this breaks the file.
+- **`module`**: Component originating the log (`config`, `copy`, `windows`, `dism`, `installer`, `shortcut`).
+- **`action`**: Target item or app name.
+- **`status`**: Outcome indicator (`SUCCESS`, `SKIPPED`, `WARNING`, `FAILED`).
+- **`message`**: Technical explanation or error description.
 
 ---
 
-## 7. Common tasks for IT officers
+## 12. Troubleshooting & Error Matrix
 
-### I want to add a new program
-1. Create a folder inside `software/` and drop the installer there.
-2. Add a block to `apps.json` (see section 5.2).
-3. Set a `detection` rule so the tool can skip it if already installed.
-4. Save, then run `Setup.exe` again.
-
-### I want to REMOVE a program from provisioning
-Just delete its block from `apps.json`. (You can leave the folder in `software/` — the
-tool only installs what is listed.) It will then be auto-discovered and installed
-though, so if you want a folder on the USB that is *never* installed, move it into
-`software/CopyOnly/`.
-
-### The tool says a program FAILED to install
-1. Open `logs/setup.log`.
-2. Find the line for that program.
-3. Read the `message`. Common causes:
-   - The installer file name in `apps.json` doesn't match the actual file in `software/`.
-   - Antivirus blocked the silent install (some programs block automation).
-   - For Geez apps: that's normal — the wizard should have popped up instead.
-
-### Only SOME apps installed — is that OK?
-Yes. `SKIPPED` usually means the app was already there. Look only for `FAILED`.
+| Error Symptom                                    | Cause                                                                                      | Resolution                                                                                                                   |
+| :----------------------------------------------- | :----------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------------------- |
+| **Exit Code 2 on startup**                       | Tool launched without Administrator rights OR JSON syntax error in config files.           | Right-click `Setup.exe` $\rightarrow$ **Run as administrator**. Validate `settings.json` and `apps.json` with a JSON linter. |
+| **App shows `FAILED` status**                    | Incorrect `installerPath`, missing installer binary, or invalid silent arguments.          | Verify installer file name in `software/` matches `installerPath` in `apps.json`. Check `logs/setup.log`.                    |
+| **App installs but is re-installed on next run** | Missing or incorrect `detection` rule in `apps.json`.                                      | Verify executable path or registry uninstall key path in `detection` block.                                                  |
+| **Duplicate shortcuts on desktop**               | `desktopShortcut.enabled` set to `true` for an app that creates its own shortcut natively. | Change `"desktopShortcut.enabled": false` in `apps.json` for that application.                                               |
+| **.NET 3.5 installation fails**                  | `NetFx3.cab` is missing from `sources/sxs/`.                                               | Copy `microsoft-windows-netfx3-ondemand-package*.cab` from Windows 11 installation media into `USB_ROOT/sources/sxs/`.       |
 
 ---
 
-## 8. Safety and rules
+## 13. Exit Codes Summary
 
-- **Always run as Administrator.** Otherwise the tool stops with exit code `2`.
-- **The administrator password** in `settings.json` is best set through the
-  `ADMIN_PASSWORD` environment variable on the PC, not stored in the file.
-- **Never run this on a PC you don't want changed** — it turns off the firewall and
-  enables Remote Desktop by default.
-- Editing config files: **keep valid JSON.** A missing comma or `{`/`}` breaks the file
-  and the tool will not start.
+| Exit Code | Classification  | Operational Meaning                                                                   |
+| :-------: | :-------------- | :------------------------------------------------------------------------------------ |
+|  **`0`**  | **Success**     | Provisioning completed successfully (including skipped tasks).                        |
+|  **`1`**  | **Task Error**  | Provisioning finished, but one or more tasks failed. Review `logs/setup.log`.         |
+|  **`2`**  | **Fatal Error** | Fatal initialization error (Elevation missing, corrupted JSON, missing system paths). |
 
 ---
 
-## 9. Quick troubleshooting
+## 14. Contributing & Open Source (GitHub)
 
-| Problem | What to do |
-|---------|-----------|
-| `Setup.exe` won't start | Make sure you are Administrator. Right-click → Run as administrator. |
-| Tool exits with code 2 at once | Usually not admin, or a config file has a mistake. Check `logs/setup.log`. |
-| "Copy-only Files" never "installs" | Expected — that folder is only copied, never run. |
-| Visual/Power Geez show in log but no window | Confirm the wizard finished and the app opens. |
-| An app shows FAILED every time | Verify the installer path in `apps.json` matches the real file in `software/`. |
+WinProvision is an open-source project hosted on GitHub! I welcome contributions from IT Officers, Systems Engineers, and Developers around the world.
 
----
+### How You Can Contribute
 
-For further technical details (development, build steps, full configuration reference),
-see the separate **README.md** file in the same folder as this guide.
+1. **Submit New Application Templates:** Share tested `apps.json` definitions for popular enterprise software (including silent switches and detection rules).
+2. **Report Bugs & Feature Requests:** Open an Issue on GitHub describing any bugs encountered or feature requests (e.g., new Windows OS policy toggles).
+3. **Code Contributions:** Enhance the Go codebase, add new modules, or improve installer detection logic.
+
+### Developer Build Instructions
+
+Requirements: **Go 1.24+**
+
+```bash
+# Clone the public repository
+git clone https://github.com/SmonSisay/winprovision.git
+cd winprovision
+
+# Run tests and static analysis
+go test ./...
+make check
+
+# Cross-compile Windows Setup.exe on Linux / macOS
+GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w -X main.version=1.0.0" -o Setup.exe ./cmd/setup
+```
+
+### GitHub Pull Request (PR) Checklist
+
+- [ ] Verify Go code compiles cleanly without warnings (`go vet ./...`).
+- [ ] Ensure all existing tests pass (`go test ./...`).
+- [ ] Validate any updated JSON config files using a linter.
+- [ ] Test `Setup.exe`
