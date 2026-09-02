@@ -33,7 +33,7 @@ USB_ROOT/
 │   │   └── ...               ← any folder to just copy
 │   └── ...                   ← drop any installer folder here
 ├── sources/
-│   └── sxs/                  ← .NET 3.5 source files (optional)
+│   └── sxs/                  ← .NET 3.5 payload (copy NetFx3.cab here to be self-contained)
 ├── assets/                   ← optional assets
 └── logs/                     ← created at runtime
 ```
@@ -193,12 +193,30 @@ The tool checks if an application is already installed before running the instal
 8. Execute tasks in order:
    - Copy `software/` to `<Destination>\Software` (idempotent sync)
    - Apply Windows configuration (firewall, RDP, admin, explorer settings)
-   - Enable .NET Framework 3.5 from `sources\sxs`
+   - Enable .NET Framework 3.5 (uses its own `sources\sxs` first, then a bootable Windows drive, then prompts)
    - Install each configured application
    - Create desktop shortcuts
    - Auto-discover and run unlisted installers
 9. Print final provisioning summary
 10. Write structured logs to `logs/setup.log`
+
+### .NET Framework 3.5 source
+
+When `windows.installDotNet35` is `true`, the tool locates the .NET 3.5 payload
+(`NetFx3.cab`, i.e. `microsoft-windows-netfx3-ondemand-package*.cab`) in this order:
+
+1. **The tool's own `sources\sxs` folder** (preferred — makes the USB self-contained)
+2. A bootable Windows drive plugged into the machine (auto-detected)
+3. A path typed by the operator when prompted
+
+To make the USB self-sufficient, copy the cab from a Windows installation media into
+`<USB>\sources\sxs` once:
+
+```
+sources/sxs/microsoft-windows-netfx3-ondemand-package~31bf3856ad364e35~amd64~~.cab
+```
+
+Then the provisioning USB works on any computer with no second bootable flash.
 
 ## Exit codes
 
