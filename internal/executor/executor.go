@@ -261,8 +261,8 @@ func runWindowsTasks(ctx context.Context, settings *models.Settings, runTask fun
 }
 
 // runDotNetTask enables .NET Framework 3.5 if configured.
-// It first checks the tool's own sources\sxs folder, then attempts to find
-// a bootable Windows disk with sources\sxs, then prompts the user for a path.
+// It first auto-detects a bootable Windows disk with sources\sxs, then checks
+// the tool's own sources\sxs folder, then prompts the user for a path.
 func runDotNetTask(ctx context.Context, settings *models.Settings, rootDir string, logger logging.Logger, runTask func(string, string, func() models.TaskResult) models.TaskResult) {
 	if settings.Windows.InstallDotNet35 {
 		dismLog := logger.WithModule("dism")
@@ -286,17 +286,11 @@ func runDotNetTask(ctx context.Context, settings *models.Settings, rootDir strin
 	}
 }
 
-// resolveSxSPath returns a validated sources\sxs path for DISM. It checks the
-// tool's own directory first (so the .NET payload can travel on the same USB),
-// then tries to auto-detect a bootable Windows drive, then asks the user.
-// Returns the validated path or an empty string.
+// resolveSxSPath returns a validated sources\sxs path for DISM. It first
+// auto-detects a bootable Windows drive (so Windows media is used when
+// present), then falls back to the tool's own sources\sxs folder, then asks
+// the user. Returns the validated path or an empty string.
 func resolveSxSPath(rootDir string, logger logging.Logger) string {
-	localSxs := filepath.Join(rootDir, "sources", "sxs")
-	if sxsDirValid(localSxs) {
-		logger.Info("resolve-sxs", "SUCCESS", fmt.Sprintf("Using local sources folder: %s", localSxs), 0, nil)
-		return localSxs
-	}
-
 	bootDrive, err := utils.DetectBootableDrive()
 	if err == nil {
 		sxsPath := bootDrive + `\sources\sxs`
@@ -307,6 +301,12 @@ func resolveSxSPath(rootDir string, logger logging.Logger) string {
 		logger.Warn("resolve-sxs", "WARNING", fmt.Sprintf("Drive %s detected but %s does not exist", bootDrive, sxsPath), 0, nil)
 	} else {
 		logger.Warn("resolve-sxs", "WARNING", fmt.Sprintf("Auto-detection failed: %v", err), 0, nil)
+	}
+
+	localSxs := filepath.Join(rootDir, "sources", "sxs")
+	if sxsDirValid(localSxs) {
+		logger.Info("resolve-sxs", "SUCCESS", fmt.Sprintf("Using local sources folder: %s", localSxs), 0, nil)
+		return localSxs
 	}
 
 	input, err := utils.PromptBootableDrive()

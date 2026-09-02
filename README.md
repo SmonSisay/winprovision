@@ -193,7 +193,7 @@ The tool checks if an application is already installed before running the instal
 8. Execute tasks in order:
    - Copy `software/` to `<Destination>\Software` (idempotent sync)
    - Apply Windows configuration (firewall, RDP, admin, explorer settings)
-   - Enable .NET Framework 3.5 (uses its own `sources\sxs` first, then a bootable Windows drive, then prompts)
+   - Enable .NET Framework 3.5 (auto-detects a bootable Windows drive first, then its own `sources\sxs`, then prompts)
    - Install each configured application
    - Create desktop shortcuts
    - Auto-discover and run unlisted installers
@@ -205,8 +205,8 @@ The tool checks if an application is already installed before running the instal
 When `windows.installDotNet35` is `true`, the tool locates the .NET 3.5 payload
 (`NetFx3.cab`, i.e. `microsoft-windows-netfx3-ondemand-package*.cab`) in this order:
 
-1. **The tool's own `sources\sxs` folder** (preferred — makes the USB self-contained)
-2. A bootable Windows drive plugged into the machine (auto-detected)
+1. A bootable Windows drive plugged into the machine (auto-detected)
+2. **The tool's own `sources\sxs` folder** (makes the USB self-contained)
 3. A path typed by the operator when prompted
 
 To make the USB self-sufficient, copy the cab from a Windows installation media into
