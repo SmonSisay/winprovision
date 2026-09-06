@@ -72,6 +72,11 @@ type AppDefinition struct {
 	AlwaysInstall    bool            `json:"alwaysInstall"`
 	CopyOnly         bool            `json:"copyOnly"`
 	AttendedFallback bool            `json:"attendedFallback"`
+	// AttendedOnly skips any silent attempt and goes straight to the
+	// interactive wizard. Use when the installer rejects every silent flag
+	// (e.g. Power Geez's ADVINSTSFX bootstrapper pops an "Invalid command
+	// line" error for /s and then falls back to the wizard anyway).
+	AttendedOnly bool `json:"attendedOnly"`
 	DesktopShortcut  ShortcutConfig  `json:"desktopShortcut"`
 	Detection        DetectionRule   `json:"detection"`
 	Deploy           *DeployConfig   `json:"deploy,omitempty"`

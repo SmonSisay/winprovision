@@ -204,6 +204,25 @@ func Install(ctx context.Context, app models.AppDefinition, softwareRoot string)
 	}
 
 	var lastErr error
+
+	// Attended-only installers (e.g. Power Geez) cannot run silently at all:
+	// every silent flag makes them pop an "Invalid command line" dialog before
+	// showing the wizard anyway, so skip the silent attempts entirely.
+	if app.AttendedOnly {
+		lastErr = runInstallerAttended(ctx, installerPath)
+		if lastErr == nil {
+			result.Status = models.TaskStatusSuccess
+			result.Message = "Installed successfully (attended wizard)"
+			result.Duration = time.Since(start)
+			return result
+		}
+		result.Status = models.TaskStatusFailed
+		result.Message = fmt.Sprintf("All install attempts failed: %v", lastErr)
+		result.Err = fmt.Errorf("install %s: %w", installerPath, lastErr)
+		result.Duration = time.Since(start)
+		return result
+	}
+
 	for _, flags := range flagSets {
 		runErr := runInstaller(ctx, installerPath, flags)
 		if runErr == nil {

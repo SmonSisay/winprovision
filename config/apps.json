@@ -77,9 +77,10 @@
     {
       "name": "Power Geez",
       "installerPath": "PowerGeez/iNSTALL Ge'ez 10.exe",
-      "silentArgs": "/s",
+      "silentArgs": "",
       "version": "latest",
       "attendedFallback": true,
+      "attendedOnly": true,
       "desktopShortcut": {
         "enabled": false
       },

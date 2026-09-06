@@ -354,10 +354,10 @@ Validates registry version string against minimum required version:
 
 ### Scenario B: Configuring Attended Fallback for Legacy Packages (e.g., Ethiopic Geez Fonts)
 
-Certain legacy packages (e.g., Visual Geez, Power Geez) do not support headless silent installation.
+Certain legacy packages (e.g., Visual Geez, Power Geez) do not support headless silent installation. Power Geez in particular pops an "Invalid command line" dialog for `/s` and then opens the wizard regardless — so it is configured with `"attendedOnly": true` to skip the silent attempt and go straight to the wizard (no popup).
 
-1. Set `"attendedFallback": true` in `apps.json`.
-2. When WinProvision executes, it attempts silent execution (`/s`). If unattended setup fails, WinProvision automatically relaunches the installer without silent switches, bringing up the GUI setup wizard.
+1. Set `"attendedFallback": true` (and `"attendedOnly": true` for Power Geez) in `apps.json`.
+2. Visual Geez: WinProvision attempts silent execution (`/S /v/qn`); if that fails it relaunches the installer without silent switches, bringing up the GUI setup wizard. Power Geez: the wizard opens directly with no silent attempt.
 3. The field technician clicks through the GUI wizard (**Next $\rightarrow$ Next $\rightarrow$ Finish**). Once closed, WinProvision resumes automatic provisioning.
 
 ### Scenario C: Deploying Non-Executable Payloads (Printer Drivers, Portable Tools)
