@@ -44,6 +44,9 @@ config/
 tmp/
 temp/
 
+# Docs synced to USB manually
+IT_GUIDE.md
+
 # Dev scratch files
 plan.md
 test-out.txt
