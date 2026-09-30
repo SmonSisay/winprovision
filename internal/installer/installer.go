@@ -44,7 +44,6 @@ var fallbackSilentFlags = [][]string{
 	{},
 }
 
-
 const moduleName = "installer"
 
 // defaultSilentArgs are tried in order when an auto-discovered installer has
@@ -110,170 +109,182 @@ func resolveInstallerPath(app models.AppDefinition, softwareRoot string) string 
 		return base
 	}
 
-	// Search app folder by trying different possible directories
-	candidates := []string{
-		filepath.Dir(filepath.Join(softwareRoot, filepath.FromSlash(app.InstallerPath))),
-		filepath.Join(softwareRoot, appFolderName(app)),
-	}
-
-	for _, dir := range candidates {
+	// The configured path may point at a file that was renamed, so fall back
+	// to searching the folder it lives in, then the app folder by name.
+	for _, dir := range appSearchDirs(app, softwareRoot) {
 		if !utils.DirExists(dir) {
 			continue
 		}
-		for _, name := range []string{"setup.exe", "install.exe"} {
-			p := filepath.Join(dir, name)
-			if utils.FileExists(p) {
-				return p
-			}
-		}
-		entries, err := os.ReadDir(dir)
-		if err != nil {
-			continue
-		}
-		for _, e := range entries {
-			if !e.IsDir() {
-				ext := strings.ToLower(filepath.Ext(e.Name()))
-				if ext == ".exe" || ext == ".msi" {
-					return filepath.Join(dir, e.Name())
-				}
-			}
+		if exePath, err := findInstallerExe(dir); err == nil && exePath != "" {
+			return exePath
 		}
 	}
 	return ""
 }
 
-// runInstaller tries to run the installer with the given args.
-func runInstaller(ctx context.Context, exePath string, args []string) error {
-	ext := strings.ToLower(filepath.Ext(exePath))
-	var cmd *exec.Cmd
-	if ext == ".msi" {
-		msiArgs := append([]string{"/i", exePath}, args...)
-		cmd = exec.CommandContext(ctx, "msiexec.exe", msiArgs...)
-	} else {
-		cmd = exec.CommandContext(ctx, exePath, args...)
+// appSearchDirs returns the directories to search for an app's installer, in
+// priority order: the folder holding the configured installer path, then the
+// app folder derived from that path or the app name.
+func appSearchDirs(app models.AppDefinition, softwareRoot string) []string {
+	configured := filepath.Join(softwareRoot, filepath.FromSlash(app.InstallerPath))
+	return []string{
+		filepath.Dir(configured),
+		filepath.Join(softwareRoot, appFolderName(app)),
 	}
-	cmd.Dir = filepath.Dir(exePath)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
 }
 
 // Install runs the application installer from the copied software directory.
+//
+// The strategy is: skip if already installed (unless AlwaysInstall), then try
+// silent flags, then optionally fall back to the interactive wizard. Exactly
+// which of those apply is decided by the app's flags — see the comment on each.
 func Install(ctx context.Context, app models.AppDefinition, softwareRoot string) models.TaskResult {
 	start := time.Now()
-	result := models.TaskResult{
-		Name:   app.Name,
-		Module: moduleName,
-	}
+	result := models.TaskResult{Name: app.Name, Module: moduleName}
 
+	// --- preconditions -------------------------------------------------
 	installed, reason, err := IsInstalled(app)
 	if err != nil {
-		result.Status = models.TaskStatusFailed
-		result.Message = "Failed to evaluate installation state"
-		result.Err = err
-		result.Duration = time.Since(start)
-		return result
+		return result.Fail(start, "Failed to evaluate installation state", err)
 	}
 	if installed && !app.AlwaysInstall {
-		result.Status = models.TaskStatusSkipped
-		result.Message = fmt.Sprintf("Already installed (%s)", reason)
-		result.Duration = time.Since(start)
-		return result
+		return result.Skip(start, fmt.Sprintf("Already installed (%s)", reason))
 	}
 
 	installerPath := resolveInstallerPath(app, softwareRoot)
 	if installerPath == "" {
-		folderName := appFolderName(app)
-		result.Status = models.TaskStatusFailed
-		result.Message = fmt.Sprintf("No installer (.exe) found in '%s' folder under software/", folderName)
-		result.Err = fmt.Errorf("no installer found for %s", app.Name)
-		result.Duration = time.Since(start)
-		return result
+		return result.Fail(start,
+			fmt.Sprintf("No installer (.exe) found in '%s' folder under software/", appFolderName(app)),
+			fmt.Errorf("no installer found for %s", app.Name))
 	}
 
-	// Build list of flag sets to try. Explicit args are always tried first.
-	// If all explicit args fail, fallback flags are tried as a last resort
-	// to handle installers whose correct silent flags weren't known at
-	// config time (e.g. old InstallShield, InnoSetup, NSIS variants).
-	var flagSets [][]string
-	explicitArgs := SplitArgs(app.SilentArgs)
-	if len(explicitArgs) > 0 {
-		flagSets = append(flagSets, explicitArgs)
-	} else {
-		flagSets = append(flagSets, fallbackSilentFlags...)
+	return attemptInstall(ctx, result, start, installerPath, buildAttempts(app), installerRunner(installerPath))
+}
+
+// attempt is one launch of an installer: the arguments to pass, and whether
+// this launch is the interactive wizard rather than a silent run.
+type attempt struct {
+	args     []string
+	attended bool
+}
+
+// runFunc carries out one attempt and reports whether it succeeded. It is a
+// parameter so the attempt sequence and the resulting status can be exercised
+// without running a real installer. The whole attempt is passed rather than
+// just its arguments, because a wizard attempt and a silent attempt can carry
+// the same (empty) argument list.
+type runFunc func(ctx context.Context, a attempt) error
+
+// buildAttempts returns the ordered attempts for an app, stopping at the first
+// that is expected to work. It is a pure function of the app's flags, so the
+// decision can be pinned in tests.
+func buildAttempts(app models.AppDefinition) []attempt {
+	// AttendedOnly installers reject every silent flag (each one pops an
+	// "Invalid command line" dialog before falling back to the wizard anyway),
+	// so for those the wizard is the only attempt.
+	if app.AttendedOnly {
+		return []attempt{{attended: true}}
+	}
+
+	attempts := make([]attempt, 0, len(fallbackSilentFlags)+1)
+	for _, flags := range silentFlagSets(app) {
+		attempts = append(attempts, attempt{args: flags})
+	}
+	if app.AttendedFallback {
+		attempts = append(attempts, attempt{attended: true})
+	}
+	return attempts
+}
+
+// attemptInstall runs the attempts in order and returns the outcome of the
+// first one that succeeds. If every attempt fails, the last error is reported:
+// it came from the final thing tried, so it is the most relevant cause.
+func attemptInstall(
+	ctx context.Context,
+	result models.TaskResult,
+	start time.Time,
+	installerPath string,
+	attempts []attempt,
+	run runFunc,
+) models.TaskResult {
+	if len(attempts) == 0 {
+		return result.Fail(start,
+			fmt.Sprintf("No install attempts configured for %s", appFolderNameFor(installerPath)),
+			fmt.Errorf("no install attempts for %s", installerPath))
 	}
 
 	var lastErr error
-
-	// Attended-only installers (e.g. Power Geez) cannot run silently at all:
-	// every silent flag makes them pop an "Invalid command line" dialog before
-	// showing the wizard anyway, so skip the silent attempts entirely.
-	if app.AttendedOnly {
-		lastErr = runInstallerAttended(ctx, installerPath)
+	for _, a := range attempts {
+		lastErr = run(ctx, a)
 		if lastErr == nil {
-			result.Status = models.TaskStatusSuccess
-			result.Message = "Installed successfully (attended wizard)"
-			result.Duration = time.Since(start)
-			return result
-		}
-		result.Status = models.TaskStatusFailed
-		result.Message = fmt.Sprintf("All install attempts failed: %v", lastErr)
-		result.Err = fmt.Errorf("install %s: %w", installerPath, lastErr)
-		result.Duration = time.Since(start)
-		return result
-	}
-
-	for _, flags := range flagSets {
-		runErr := runInstaller(ctx, installerPath, flags)
-		if runErr == nil {
-			result.Status = models.TaskStatusSuccess
-			break
-		}
-		lastErr = runErr
-	}
-
-	if result.Status != models.TaskStatusSuccess {
-		// Try the attended wizard fallback last: some installers (e.g.
-		// Power Geez's ADVINSTSFX bootstrapper) cannot run silently at all,
-		// so the wizard is shown for the operator to complete manually.
-		if app.AttendedFallback {
-			wizardErr := runInstallerAttended(ctx, installerPath)
-			if wizardErr == nil {
-				result.Status = models.TaskStatusSuccess
-				result.Message = "Installed successfully (attended wizard)"
-				result.Duration = time.Since(start)
-				return result
+			if a.attended {
+				return result.Succeed(start, "Installed successfully (attended wizard)")
 			}
-			lastErr = wizardErr
+			return result.Succeed(start, "Installed successfully")
 		}
-
-		result.Status = models.TaskStatusFailed
-		result.Message = fmt.Sprintf("All install attempts failed: %v", lastErr)
-		result.Err = fmt.Errorf("install %s: %w", installerPath, lastErr)
-		result.Duration = time.Since(start)
-		return result
 	}
 
-	result.Message = "Installed successfully"
-	result.Duration = time.Since(start)
-	return result
+	if ranSilentAttempts(attempts) {
+		return result.Fail(start,
+			fmt.Sprintf("All install attempts failed: %v", lastErr),
+			fmt.Errorf("install %s: %w", installerPath, lastErr))
+	}
+	return result.Fail(start,
+		fmt.Sprintf("All silent install attempts failed: %v", lastErr),
+		fmt.Errorf("install %s: %w", installerPath, lastErr))
 }
 
-// runInstallerAttended launches the installer without any silent flags so the
-// operating system / installer wizard UI appears for the operator to complete
-// manually. It waits for the process to exit.
-func runInstallerAttended(ctx context.Context, exePath string) error {
-	ext := strings.ToLower(filepath.Ext(exePath))
-	var cmd *exec.Cmd
-	if ext == ".msi" {
-		cmd = exec.CommandContext(ctx, "msiexec.exe", "/i", exePath)
-	} else {
-		cmd = exec.CommandContext(ctx, exePath)
+// ranSilentAttempts reports whether any attempt used command-line arguments,
+// which decides how the failure is worded: a wizard-only failure and a silent
+// failure need different messages to be useful in a log.
+func ranSilentAttempts(attempts []attempt) bool {
+	for _, a := range attempts {
+		if !a.attended {
+			return true
+		}
 	}
-	cmd.Dir = filepath.Dir(exePath)
+	return false
+}
+
+// appFolderNameFor is only used in the "no attempts configured" message, where
+// the installer path is the more useful thing to name.
+func appFolderNameFor(installerPath string) string {
+	return filepath.Base(filepath.Dir(installerPath))
+}
+
+// silentFlagSets returns the argument sets to try, in order. Explicitly
+// configured args are used alone when present: guessing past a known-good
+// command line only risks running a partial install twice.
+func silentFlagSets(app models.AppDefinition) [][]string {
+	if explicit := SplitArgs(app.SilentArgs); len(explicit) > 0 {
+		return [][]string{explicit}
+	}
+	return fallbackSilentFlags
+}
+
+// launchInstaller runs an installer, routing .msi files through msiexec and
+// setting the working directory to the installer's own folder so relative
+// paths in installer scripts resolve correctly.
+func launchInstaller(ctx context.Context, installerPath string, args []string) error {
+	var cmd *exec.Cmd
+	if strings.EqualFold(filepath.Ext(installerPath), ".msi") {
+		msiArgs := append([]string{"/i", installerPath}, args...)
+		cmd = exec.CommandContext(ctx, "msiexec.exe", msiArgs...)
+	} else {
+		cmd = exec.CommandContext(ctx, installerPath, args...)
+	}
+	cmd.Dir = filepath.Dir(installerPath)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+// installerRunner adapts launchInstaller to the runFunc signature, binding the
+// installer path.
+func installerRunner(installerPath string) runFunc {
+	return func(ctx context.Context, a attempt) error {
+		return launchInstaller(ctx, installerPath, a.args)
+	}
 }
 
 // Deploy installs an application without running an installer by copying a

@@ -5,7 +5,6 @@ package registry
 
 import (
 	"fmt"
-	"strings"
 
 	"golang.org/x/sys/windows/registry"
 )
@@ -109,20 +108,18 @@ func createKey(path string) (registry.Key, error) {
 	return key, nil
 }
 
+// splitPath resolves a configured path to a hive key and subkey.
 func splitPath(path string) (registry.Key, string, error) {
-	normalized := strings.TrimSpace(path)
-	normalized = strings.ReplaceAll(normalized, "/", `\`)
-	parts := strings.SplitN(normalized, `\`, 2)
-	if len(parts) != 2 {
-		return 0, "", fmt.Errorf("invalid registry path: %s", path)
+	hive, subkey, err := splitRegistryPath(path)
+	if err != nil {
+		return 0, "", err
 	}
-
-	switch strings.ToUpper(parts[0]) {
-	case "HKLM", "HKEY_LOCAL_MACHINE":
-		return registry.LOCAL_MACHINE, parts[1], nil
-	case "HKCU", "HKEY_CURRENT_USER":
-		return registry.CURRENT_USER, parts[1], nil
+	switch hive {
+	case HiveLocalMachine:
+		return registry.LOCAL_MACHINE, subkey, nil
+	case HiveCurrentUser:
+		return registry.CURRENT_USER, subkey, nil
 	default:
-		return 0, "", fmt.Errorf("unsupported registry hive: %s", parts[0])
+		return 0, "", fmt.Errorf("unsupported registry hive: %s", hive)
 	}
 }
