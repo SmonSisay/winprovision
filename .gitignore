@@ -7,9 +7,10 @@
 
 # Go build artifacts
 Setup.exe
-ProvisionTool.exe
 *.test
 *.out
+*.prof
+coverage.*
 
 # Go workspace
 vendor/
@@ -33,6 +34,9 @@ logs/
 # Software payloads (large installers, synced to USB manually)
 software/
 
+# .NET 3.5 payload (68 MB cab, synced to USB manually)
+sources/sxs/*.cab
+
 # Config (contains hardcoded passwords, synced to USB manually)
 config/
 
@@ -51,3 +55,7 @@ IT_GUIDE.md
 plan.md
 test-out.txt
 test-err.txt
+
+# Backup archives created during cleanup
+*.bak
+*.orig

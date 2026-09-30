@@ -1,0 +1,20 @@
+# Binary handling only. Line endings are deliberately NOT normalized here.
+#
+# This repository is checked out with CRLF in some Go files and LF in the rest,
+# as committed. Forcing eol=lf would rewrite every one of those files on the
+# next checkout, so a one-line logic change would show up as a whole-file diff
+# and `gofmt -l` would flag files that were already correctly formatted. Mixed
+# endings are pre-existing; this file's job is only to stop git from corrupting
+# genuine binaries.
+
+# Windows-specific artefacts are genuinely binary.
+*.exe binary
+*.cab binary
+*.msi binary
+*.wim binary
+
+# Generated or vendored, never diffed.
+vendor/ binary
+*.png binary
+*.jpg binary
+*.ico binary
