@@ -5,7 +5,6 @@ package utils
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -90,72 +89,6 @@ func GetWindowsVersion() (string, error) {
 	return fmt.Sprintf("%s (Build %s)", productName, build), nil
 }
 
-// DetectDestinationDrive returns the first available non-system fixed drive
-// (internal hard drive, not USB removable). It tries three strategies:
-// 1. Volume enumeration (finds letterless drives)
-// 2. Logical drive enumeration with DRIVE_FIXED check
-// 3. Logical drive enumeration with any non-removable drive check
-func DetectDestinationDrive() (string, error) {
-	systemDrive := strings.ToUpper(strings.TrimSuffix(os.Getenv("SystemDrive"), `\`))
-	if systemDrive == "" {
-		systemDrive = "C:"
-	}
-
-	// Strategy 1: enumerate all volumes including letterless ones
-	volumes, err := enumerateVolumes()
-	if err == nil {
-		for _, vol := range volumes {
-			if vol.driveLetter != "" && strings.EqualFold(vol.driveLetter, systemDrive) {
-				continue
-			}
-			drive := vol.driveLetter
-			if drive == "" {
-				drive = mountVolumeTemporarily(vol.name)
-			}
-			if drive == "" {
-				continue
-			}
-			root := drive + `\`
-			driveType := windows.GetDriveType(syscall.StringToUTF16Ptr(root))
-			if driveType == windows.DRIVE_FIXED {
-				return drive, nil
-			}
-		}
-	}
-
-	// Strategy 2: legacy drive enumeration, strict DRIVE_FIXED check
-	drives, err := listLogicalDrives()
-	if err == nil {
-		for _, drive := range drives {
-			if strings.EqualFold(drive, systemDrive) {
-				continue
-			}
-			root := drive + `\`
-			driveType := windows.GetDriveType(syscall.StringToUTF16Ptr(root))
-			if driveType == windows.DRIVE_FIXED {
-				return drive, nil
-			}
-		}
-	}
-
-	// Strategy 3: accept any non-system, non-removable, non-CDROM drive
-	if err == nil {
-		for _, drive := range drives {
-			if strings.EqualFold(drive, systemDrive) {
-				continue
-			}
-			root := drive + `\`
-			driveType := windows.GetDriveType(syscall.StringToUTF16Ptr(root))
-			if driveType != windows.DRIVE_REMOVABLE && driveType != windows.DRIVE_CDROM &&
-				driveType != windows.DRIVE_REMOTE && driveType != windows.DRIVE_RAMDISK {
-				return drive, nil
-			}
-		}
-	}
-
-	return "", fmt.Errorf("no secondary fixed drive found")
-}
-
 // DetectBootableDrive scans all volumes for a Windows bootable disk
 // containing the sources\sxs directory with .cab files, excluding the system drive.
 // It enumerates all volumes including those without drive letters.
@@ -185,7 +118,7 @@ func DetectBootableDrive() (string, error) {
 			}
 			sxsPath := drive + `\sources\sxs`
 			fmt.Printf("  [detect] Checking %s ...", sxsPath)
-			if validateSxSDirectory(sxsPath) {
+			if IsSxSDirectory(sxsPath) {
 				fmt.Println(" FOUND (valid)")
 				return drive, nil
 			}
@@ -205,7 +138,7 @@ func DetectBootableDrive() (string, error) {
 			}
 			sxsPath := drive + `\sources\sxs`
 			fmt.Printf("  [detect] Checking %s ...", sxsPath)
-			if validateSxSDirectory(sxsPath) {
+			if IsSxSDirectory(sxsPath) {
 				fmt.Println(" FOUND (valid)")
 				return drive, nil
 			}
@@ -219,50 +152,20 @@ func DetectBootableDrive() (string, error) {
 	return "", fmt.Errorf("no bootable Windows drive found with valid sources\\sxs directory")
 }
 
-// validateSxSDirectory checks if a path exists as a directory AND contains
-// at least one .cab file, confirming it's a valid Windows source media.
-func validateSxSDirectory(path string) bool {
-	info, err := os.Stat(path)
-	if err != nil || !info.IsDir() {
-		return false
+// FreeSpaceBytes returns the number of bytes available to the caller on the
+// volume containing path. Path only needs to exist — it need not be the volume
+// root.
+func FreeSpaceBytes(path string) (uint64, error) {
+	target, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return 0, fmt.Errorf("encode path: %w", err)
 	}
-	// Check for .cab files — a valid sxs directory must have them
-	matches, err := filepath.Glob(filepath.Join(path, "*.cab"))
-	if err != nil || len(matches) == 0 {
-		return false
+	var available, totalBytes, totalFree uint64
+	if err := windows.GetDiskFreeSpaceEx(target, &available, &totalBytes, &totalFree); err != nil {
+		return 0, fmt.Errorf("query free space for %s: %w", path, err)
 	}
-	return true
+	return available, nil
 }
-
-// GetOSBuildNumber returns the Windows build number.
-func GetOSBuildNumber() (uint32, error) {
-	var info osVersionInfoEx
-	info.Size = uint32(unsafe.Sizeof(info))
-	ret, _, err := procRtlGetVersion.Call(uintptr(unsafe.Pointer(&info)))
-	if ret != 0 {
-		return 0, fmt.Errorf("RtlGetVersion failed: %w", err)
-	}
-	return info.BuildNumber, nil
-}
-
-type osVersionInfoEx struct {
-	Size             uint32
-	MajorVersion     uint32
-	MinorVersion     uint32
-	BuildNumber      uint32
-	PlatformId       uint32
-	CSDVersion       [128]uint16
-	ServicePackMajor uint16
-	ServicePackMinor uint16
-	SuiteMask        uint16
-	ProductType      byte
-	Reserved         byte
-}
-
-var (
-	ntdll             = windows.NewLazySystemDLL("ntdll.dll")
-	procRtlGetVersion = ntdll.NewProc("RtlGetVersion")
-)
 
 func listLogicalDrives() ([]string, error) {
 	buffer := make([]uint16, 256)

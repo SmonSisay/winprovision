@@ -40,22 +40,28 @@ func GetLoggedInUser() (string, error) {
 	return username, nil
 }
 
-// PromptDestinationFolder asks the user to enter a destination folder path.
-// It displays a formatted guide with examples to help the user.
+// PromptDestinationFolder asks the operator which drive or folder the software
+// should be copied into. It returns a root — never the final software folder —
+// so the caller can append settings.Destination.FolderName exactly once no
+// matter which code path produced the value. The examples therefore show a bare
+// drive or folder, not the finished destination.
 func PromptDestinationFolder(folderName string) (string, error) {
 	reader := bufio.NewReader(os.Stdin)
 
 	fmt.Println()
 	fmt.Println("  ─── Destination Folder ───")
 	fmt.Println()
-	fmt.Println("  Where should the software files be copied to?")
+	fmt.Println("  No fixed volume other than the system drive was found.")
+	fmt.Println("  Enter the drive or folder that should receive the software.")
 	fmt.Println()
 	fmt.Println("  Examples:")
-	fmt.Printf("    D:\\%s\n", folderName)
-	fmt.Printf("    E:\\%s\n", folderName)
-	fmt.Printf("    D:\\Work\\%s\n", folderName)
+	fmt.Println(`    D:\`)
+	fmt.Println(`    E:\`)
+	fmt.Println(`    D:\Work\`)
 	fmt.Println()
-	fmt.Print("  Enter full path: ")
+	fmt.Printf("  Setup.exe will create a '%s' folder inside it.\n", folderName)
+	fmt.Println()
+	fmt.Print("  Enter path: ")
 
 	line, err := reader.ReadString('\n')
 	if err != nil {
@@ -68,11 +74,11 @@ func PromptDestinationFolder(folderName string) (string, error) {
 
 	path = filepath.Clean(path)
 	if !IsAbsoluteWindowsPath(path) {
-		return "", fmt.Errorf("please enter a full path (e.g. D:\\%s)", folderName)
+		return "", fmt.Errorf("please enter a full path (e.g. D:\\)")
 	}
 
-	if !DirExists(filepath.Dir(path)) {
-		return "", fmt.Errorf("parent directory does not exist: %s", filepath.Dir(path))
+	if !DirExists(path) {
+		return "", fmt.Errorf("path does not exist or is not accessible: %s", path)
 	}
 
 	return path, nil
@@ -106,6 +112,20 @@ func PromptBootableDrive() (string, error) {
 	return input, nil
 }
 
+// IsSxSDirectory reports whether path is a Windows sources\sxs directory
+// holding a usable .NET Framework 3.5 payload, i.e. at least one .cab file.
+// An existing but empty directory is not a usable payload source.
+//
+// This is the single definition of "valid sources\sxs"; the DISM source
+// lookup and the bootable-drive probe both use it so they cannot disagree.
+func IsSxSDirectory(path string) bool {
+	if !DirExists(path) {
+		return false
+	}
+	matches, err := filepath.Glob(filepath.Join(path, "*.cab"))
+	return err == nil && len(matches) > 0
+}
+
 // ResolveSoftwareDestination returns the full path to the software destination directory.
 func ResolveSoftwareDestination(destinationRoot, folderName string) string {
 	return filepath.Join(destinationRoot, folderName)
@@ -127,6 +147,33 @@ func DirExists(path string) bool {
 		return false
 	}
 	return info.IsDir()
+}
+
+// DirSize returns the combined size in bytes of every regular file under path.
+// It is used to work out how much free space a destination volume needs before
+// the software copy is attempted.
+func DirSize(path string) (int64, error) {
+	var total int64
+	err := filepath.WalkDir(path, func(_ string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		info, err := entry.Info()
+		if err != nil {
+			return err
+		}
+		if info.Mode().IsRegular() {
+			total += info.Size()
+		}
+		return nil
+	})
+	if err != nil {
+		return 0, fmt.Errorf("measure directory %s: %w", path, err)
+	}
+	return total, nil
 }
 
 // IsAbsoluteWindowsPath reports whether path looks like an absolute Windows path.

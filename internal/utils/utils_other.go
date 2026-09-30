@@ -14,17 +14,13 @@ func GetWindowsVersion() (string, error) {
 	return "", fmt.Errorf("windows version detection is only supported on Windows")
 }
 
-// DetectDestinationDrive returns the first available non-system drive letter.
-func DetectDestinationDrive() (string, error) {
-	return "", fmt.Errorf("drive detection is only supported on Windows")
-}
-
-// GetOSBuildNumber returns the Windows build number.
-func GetOSBuildNumber() (uint32, error) {
-	return 0, fmt.Errorf("build number detection is only supported on Windows")
-}
-
 // DetectBootableDrive detects a bootable Windows drive.
 func DetectBootableDrive() (string, error) {
 	return "", fmt.Errorf("bootable drive detection is only supported on Windows")
+}
+
+// FreeSpaceBytes reports the free space on the volume containing path.
+func FreeSpaceBytes(path string) (uint64, error) {
+	_ = path
+	return 0, fmt.Errorf("free space detection is only supported on Windows")
 }
