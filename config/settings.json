@@ -7,7 +7,7 @@
     "disableFirewall": true,
     "enableRemoteDesktop": true,
     "enableAdministrator": true,
-    "administratorPassword": "Enat@3n47#2026",
+    "administratorPassword": "",
     "installDotNet35": true,
     "disableWindowsUpdate": true,
     "showFileExtensions": false,
