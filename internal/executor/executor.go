@@ -3,8 +3,8 @@ package executor
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"os/exec"
 	"path/filepath"
 	"runtime/debug"
 	"strings"
@@ -12,169 +12,235 @@ import (
 
 	"github.com/SmonSisay/winprovision/internal/config"
 	"github.com/SmonSisay/winprovision/internal/copy"
-	"github.com/SmonSisay/winprovision/internal/dism"
 	"github.com/SmonSisay/winprovision/internal/installer"
 	"github.com/SmonSisay/winprovision/internal/logging"
 	"github.com/SmonSisay/winprovision/internal/models"
 	"github.com/SmonSisay/winprovision/internal/progress"
-	"github.com/SmonSisay/winprovision/internal/shortcut"
 	"github.com/SmonSisay/winprovision/internal/utils"
-	winconfig "github.com/SmonSisay/winprovision/internal/windows"
 )
-
-// Default timeout for individual tasks (installers, DISM, etc.).
-const defaultTaskTimeout = 10 * time.Minute
 
 // Options configures provisioning execution.
 type Options struct {
 	Version string
+
+	// Confirm asks the operator to approve the plan. A nil Confirm means
+	// "proceed without asking", which is what unattended runs want.
 	Confirm func() (bool, error)
 }
 
-// Run executes the full provisioning workflow.
+// Run executes the full provisioning workflow and returns a process exit code.
 func Run(ctx context.Context, opts Options) int {
-	if opts.Version == "" {
-		opts.Version = "dev"
+	opts = opts.withDefaults()
+
+	env, err := newEnvironment(ctx, opts)
+	if err != nil {
+		return reportFatal(err)
 	}
-	if opts.Confirm == nil {
-		opts.Confirm = func() (bool, error) { return true, nil }
+	defer env.logger.Close()
+
+	// The destination is resolved, and then space-checked, before anything is
+	// planned or shown. An undersized destination must stop the run while the
+	// machine is still untouched rather than part-way through the copy.
+	env.destination, err = env.resolveDestination()
+	if err != nil {
+		return reportFatal(err)
+	}
+	if err := env.checkDestinationSpace(); err != nil {
+		return reportFatal(err)
 	}
 
+	plan := buildTaskPlan(env)
+	switch err := env.confirmOrAbort(plan); {
+	case err == nil:
+		// Approved: carry on.
+	case errors.Is(err, errCancelled):
+		// Declining is a clean outcome, not a failure.
+		fmt.Println("Provisioning cancelled by user.")
+		return models.ExitSuccess
+	default:
+		return reportFatal(err)
+	}
+
+	// The clock starts once the work is approved, so a run that sat waiting on
+	// the operator is not reported as taking that long.
+	env.startedAt = time.Now()
+	env.execute(plan)
+
+	return env.finish()
+}
+
+// reportFatal prints a startup failure and returns the fatal exit code.
+func reportFatal(err error) int {
+	fmt.Printf("FATAL: %v\n", err)
+	return models.ExitFatal
+}
+
+// environment holds everything the provisioning phases need: resolved
+// configuration, the logger, and the chosen destination. Building it up front
+// keeps Run readable and makes each phase's dependencies explicit.
+type environment struct {
+	opts      Options
+	ctx       context.Context
+	rootDir   string
+	settings  *models.Settings
+	apps      []models.AppDefinition
+	logger    logging.Logger
+	display   *progress.Display
+	windows   string
+	username  string
+	startedAt time.Time
+
+	// destination is the folder the software payload is copied to, e.g.
+	// D:\Softwares. Its parent volume root is kept for the space check.
+	destination     string
+	destinationRoot string
+}
+
+// newEnvironment performs startup validation and loads configuration. Every
+// failure here is fatal and reported before any machine state is changed.
+func newEnvironment(ctx context.Context, opts Options) (*environment, error) {
 	rootDir, err := utils.GetExecutableDir()
 	if err != nil {
-		fmt.Printf("FATAL: %v\n", err)
-		return models.ExitFatal
+		return nil, err
 	}
 
-	isAdmin, err := utils.IsAdmin()
+	// Provisioning writes to HKLM, System32 and Program Files, so elevation
+	// is checked before anything else.
+	elevated, err := utils.IsAdmin()
 	if err != nil {
-		fmt.Printf("FATAL: administrator check failed: %v\n", err)
-		return models.ExitFatal
+		return nil, fmt.Errorf("administrator check failed: %w", err)
 	}
-	if !isAdmin {
-		fmt.Println("FATAL: Setup.exe must be run as Administrator.")
-		return models.ExitFatal
+	if !elevated {
+		return nil, errNotElevated
 	}
 
 	settings, err := config.LoadSettings(rootDir)
 	if err != nil {
-		fmt.Printf("FATAL: %v\n", err)
-		return models.ExitFatal
+		return nil, err
 	}
-
 	apps, err := config.LoadApps(rootDir)
 	if err != nil {
-		fmt.Printf("FATAL: %v\n", err)
-		return models.ExitFatal
+		return nil, err
 	}
 
 	logger, err := logging.NewFileLogger(rootDir, settings.Logging.File, settings.Logging.Level)
 	if err != nil {
-		fmt.Printf("FATAL: %v\n", err)
-		return models.ExitFatal
+		return nil, err
 	}
-	defer logger.Close()
 
+	// These two are cosmetic banner details. An unknown value is a cosmetic
+	// problem, not a reason to refuse to provision.
 	windowsVersion, err := utils.GetWindowsVersion()
 	if err != nil {
-		windowsVersion = "Windows 11"
+		windowsVersion = "Windows"
 	}
 	username, err := utils.GetLoggedInUser()
 	if err != nil {
 		username = "Unknown"
 	}
 
-	// Create D: partition first so resolveDestination can auto-detect it.
-	fmt.Println()
-	fmt.Println("  ─── Preparing Disk ───")
-	fmt.Println()
-	partResult := winconfig.EnsureSecondaryPartition(ctx)
-	if partResult.Status == models.TaskStatusFailed {
-		fmt.Printf("  WARNING: %s\n", partResult.Message)
-	} else if partResult.Status == models.TaskStatusSkipped {
-		fmt.Printf("  %s\n", partResult.Message)
-	} else {
-		fmt.Printf("  D: partition created successfully\n")
+	env := &environment{
+		opts:      opts,
+		ctx:       ctx,
+		rootDir:   rootDir,
+		settings:  settings,
+		apps:      apps,
+		logger:    logger,
+		windows:   windowsVersion,
+		username:  username,
+		startedAt: time.Now(),
 	}
-	fmt.Println()
+	return env, nil
+}
 
-	destinationRoot, err := resolveDestination(settings)
-	if err != nil {
-		fmt.Printf("FATAL: %v\n", err)
-		return models.ExitFatal
+func (o Options) withDefaults() Options {
+	if o.Version == "" {
+		o.Version = "dev"
 	}
-	softwareDestination := utils.ResolveSoftwareDestination(destinationRoot, settings.Destination.FolderName)
+	if o.Confirm == nil {
+		o.Confirm = func() (bool, error) { return true, nil }
+	}
+	return o
+}
 
-	// Build the task plan once — derived from the same data used for the
-	// progress display and action summary, eliminating the DRY violation.
-	plan := buildTaskPlan(settings, apps)
-
-	display := progress.NewDisplay(plan.TotalTasks())
-	display.ShowBanner(opts.Version, windowsVersion, username)
-	display.ShowDestination(softwareDestination)
-	display.ShowActionSummary(plan.ActionSummary())
-
-	confirmed, err := opts.Confirm()
+// resolveDestination picks the volume the payload is copied to and resolves
+// the full software folder beneath it.
+func (e *environment) resolveDestination() (string, error) {
+	root, err := resolveDestination(e.ctx, e.settings)
 	if err != nil {
-		fmt.Printf("FATAL: %v\n", err)
-		return models.ExitFatal
+		return "", err
+	}
+	e.destinationRoot = root
+	e.destination = utils.ResolveSoftwareDestination(root, e.settings.Destination.FolderName)
+	return e.destination, nil
+}
+
+// checkDestinationSpace refuses to start unless the destination volume can
+// hold the payload.
+func (e *environment) checkDestinationSpace() error {
+	payloadRoot := filepath.Join(e.rootDir, "software")
+	return checkDestinationSpace(e.destination, e.destinationRoot, payloadRoot)
+}
+
+// confirmOrAbort shows the plan and asks the operator to approve it. It returns
+// normally when provisioning should continue; a refusal is reported to the
+// caller as a clean cancellation.
+// errCancelled marks a run the operator declined. It is not a failure.
+var errCancelled = errors.New("provisioning cancelled by user")
+
+// errNotElevated is returned when Setup.exe is not running elevated.
+var errNotElevated = errors.New("setup.exe must be run as Administrator")
+
+// confirmOrAbort shows the plan and asks the operator to approve it. It
+// returns a non-nil error when provisioning must not start, either because the
+// operator said no or because the confirmation itself failed.
+func (e *environment) confirmOrAbort(plan *taskPlan) error {
+	e.display = progress.NewDisplay(plan.TotalTasks())
+	e.display.ShowBanner(e.opts.Version, e.windows, e.username)
+	e.display.ShowDestination(e.destination)
+	e.display.ShowActionSummary(plan.ActionSummary())
+
+	confirmed, err := e.opts.Confirm()
+	if err != nil {
+		return err
 	}
 	if !confirmed {
-		fmt.Println("Provisioning cancelled by user.")
-		return models.ExitSuccess
+		return errCancelled
 	}
+	return nil
+}
 
-	start := time.Now()
-	logger.Info("startup", string(models.TaskStatusSuccess), "Application started", 0, nil)
-	logger.Info("admin-check", string(models.TaskStatusSuccess), "Administrator check passed", 0, nil)
+// execute runs the planned tasks, then the auto-discovery phase, then prints
+// the final report.
+func (e *environment) execute(plan *taskPlan) {
+	e.logger.Info("startup", string(models.TaskStatusSuccess), "Application started", 0, nil)
+	e.logger.Info("admin-check", string(models.TaskStatusSuccess), "Administrator check passed", 0, nil)
 
-	runTask := func(module, task string, fn func() models.TaskResult) models.TaskResult {
-		display.TaskStart(module, task)
-		result := safeRunTask(fn)
-		display.TaskComplete(result)
-		logger.WithModule(module).Info(
-			task,
-			string(result.Status),
-			result.Message,
-			result.Duration,
-			result.Err,
-		)
-		return result
-	}
+	plan.execute(e.ctx, e.display, e.logger)
+	runDiscoveryPhase(e.ctx, e.destination, e.apps, e.display, e.logger)
 
-	copyResult := runTask("copy", "Copying Software", func() models.TaskResult {
-		return runCopyPhase(rootDir, softwareDestination, logger)
-	})
+	e.display.ShowFinalReport()
+}
 
-	if copyResult.Status == models.TaskStatusFailed {
-		fmt.Println()
-		fmt.Println("WARNING: Software copy encountered failures.")
-		fmt.Println("         Installer tasks may fail because files are missing from the destination.")
-		fmt.Println()
-	}
-
-	runWindowsTasks(ctx, settings, runTask)
-	runDotNetTask(ctx, settings, rootDir, logger, runTask)
-	runInstallerTasks(ctx, apps, softwareDestination, runTask)
-	runDiscoveryPhase(ctx, softwareDestination, apps, display, logger)
-
-	display.ShowFinalReport()
-	logger.Info(
+// finish reports the outcome and returns the process exit code.
+func (e *environment) finish() int {
+	elapsed := time.Since(e.startedAt)
+	e.logger.Info(
 		"complete",
 		string(models.TaskStatusSuccess),
-		fmt.Sprintf("Provisioning completed in %s", time.Since(start).Round(time.Second)),
-		time.Since(start),
+		fmt.Sprintf("Provisioning completed in %s", elapsed.Round(time.Second)),
+		elapsed,
 		nil,
 	)
-
-	if display.HasFailures() {
+	if e.display.HasFailures() {
 		return models.ExitTaskFailures
 	}
 	return models.ExitSuccess
 }
 
-// safeRunTask executes a task function with panic recovery. If the task panics,
-// it is recorded as a FAILED result and execution continues to the next task.
+// safeRunTask executes a task with panic recovery. A panicking task is recorded
+// as FAILED and the run continues, so one broken installer cannot leave the
+// machine half-provisioned with no report.
 func safeRunTask(fn func() (result models.TaskResult)) (result models.TaskResult) {
 	defer func() {
 		if r := recover(); r != nil {
@@ -182,7 +248,7 @@ func safeRunTask(fn func() (result models.TaskResult)) (result models.TaskResult
 			result = models.TaskResult{
 				Status:  models.TaskStatusFailed,
 				Message: fmt.Sprintf("panic recovered: %v", r),
-				Err:     fmt.Errorf("panic: %v\nstack: %s", r, string(stack)),
+				Err:     fmt.Errorf("panic: %v\nstack: %s", r, stack),
 			}
 		}
 	}()
@@ -192,208 +258,35 @@ func safeRunTask(fn func() (result models.TaskResult)) (result models.TaskResult
 // runCopyPhase copies the software directory to the destination drive.
 func runCopyPhase(rootDir, softwareDestination string, logger logging.Logger) models.TaskResult {
 	start := time.Now()
-	src := filepath.Join(rootDir, "software")
-	stats, err := copy.SyncDirectory(src, softwareDestination, logger.WithModule("copy"))
+	result := models.TaskResult{Name: "Copy Software", Module: "copy"}
+	result.Duration = time.Since(start)
+
+	stats, err := copy.SyncDirectory(filepath.Join(rootDir, "software"), softwareDestination, logger.WithModule("copy"))
 	if err != nil {
-		return models.TaskResult{
-			Name:     "Copy Software",
-			Module:   "copy",
-			Status:   models.TaskStatusFailed,
-			Message:  err.Error(),
-			Duration: time.Since(start),
-			Err:      err,
-		}
+		return failedCopy(result, err)
 	}
 	if stats.Failed > 0 {
-		return models.TaskResult{
-			Name:     "Copy Software",
-			Module:   "copy",
-			Status:   models.TaskStatusFailed,
-			Message:  fmt.Sprintf("Copied=%d Skipped=%d Failed=%d", stats.Copied, stats.Skipped, stats.Failed),
-			Duration: time.Since(start),
-			Err:      fmt.Errorf("%d file copy operations failed", stats.Failed),
-		}
+		return failedCopy(result, fmt.Errorf("%d file copy operations failed", stats.Failed))
 	}
-	return models.TaskResult{
-		Name:     "Copy Software",
-		Module:   "copy",
-		Status:   models.TaskStatusSuccess,
-		Message:  fmt.Sprintf("Copied=%d Skipped=%d Failed=%d", stats.Copied, stats.Skipped, stats.Failed),
-		Duration: time.Since(start),
-	}
+
+	result.Status = models.TaskStatusSuccess
+	result.Message = copyStatsMessage(stats)
+	return result
 }
 
-// runWindowsTasks runs all enabled Windows configuration tasks.
-func runWindowsTasks(ctx context.Context, settings *models.Settings, runTask func(string, string, func() models.TaskResult) models.TaskResult) {
-	if settings.Windows.DisableFirewall {
-		runTask("windows", "Disable Firewall", func() models.TaskResult {
-			return winconfig.DisableFirewall(ctx)
-		})
-	}
-	if settings.Windows.EnableRemoteDesktop {
-		runTask("windows", "Enable Remote Desktop", func() models.TaskResult {
-			return winconfig.EnableRemoteDesktop(ctx)
-		})
-	}
-	if settings.Windows.EnableAdministrator {
-		runTask("windows", "Set Administrator Password", func() models.TaskResult {
-			return winconfig.SetAdministratorPassword(ctx, settings.Windows.AdministratorPassword)
-		})
-		runTask("windows", "Enable Administrator", func() models.TaskResult {
-			return winconfig.EnableAdministrator(ctx)
-		})
-	}
-	if settings.Windows.DisableWindowsUpdate {
-		runTask("windows", "Disable Windows Update", func() models.TaskResult {
-			return winconfig.DisableWindowsUpdate(ctx)
-		})
-	}
-	if settings.Windows.ShowFileExtensions {
-		runTask("windows", "Show File Extensions", func() models.TaskResult {
-			return winconfig.ShowFileExtensions()
-		})
-	}
-	if settings.Windows.ShowHiddenFiles {
-		runTask("windows", "Show Hidden Files", func() models.TaskResult {
-			return winconfig.ShowHiddenFiles()
-		})
-	}
+func failedCopy(result models.TaskResult, err error) models.TaskResult {
+	result.Status = models.TaskStatusFailed
+	result.Err = err
+	return result
 }
 
-// runDotNetTask enables .NET Framework 3.5 if configured.
-// It first auto-detects a bootable Windows disk with sources\sxs, then checks
-// the tool's own sources\sxs folder, then prompts the user for a path.
-func runDotNetTask(ctx context.Context, settings *models.Settings, rootDir string, logger logging.Logger, runTask func(string, string, func() models.TaskResult) models.TaskResult) {
-	if settings.Windows.InstallDotNet35 {
-		dismLog := logger.WithModule("dism")
-		runTask("dism", "Enable .NET Framework 3.5", func() models.TaskResult {
-			sxsPath := resolveSxSPath(rootDir, dismLog)
-			if sxsPath == "" {
-				start := time.Now()
-				dismLog.Warn("resolve-sxs", "FAILED", "Bootable flash not detected and no path provided", 0, nil)
-				return models.TaskResult{
-					Name:     ".NET Framework 3.5",
-					Module:   "dism",
-					Status:   models.TaskStatusFailed,
-					Message:  "Bootable flash not detected and no path provided. .NET Framework 3.5 cannot be installed.",
-					Duration: time.Since(start),
-					Err:      fmt.Errorf("no valid sources\\sxs path provided"),
-				}
-			}
-			dismLog.Info("resolve-sxs", "SUCCESS", fmt.Sprintf("Using source path: %s", sxsPath), 0, nil)
-			return dism.EnableDotNet35(ctx, sxsPath)
-		})
-	}
+func copyStatsMessage(stats models.CopyStats) string {
+	return fmt.Sprintf("Copied=%d Skipped=%d Failed=%d", stats.Copied, stats.Skipped, stats.Failed)
 }
 
-// resolveSxSPath returns a validated sources\sxs path for DISM. It first
-// auto-detects a bootable Windows drive (so Windows media is used when
-// present), then falls back to the tool's own sources\sxs folder, then asks
-// the user. Returns the validated path or an empty string.
-func resolveSxSPath(rootDir string, logger logging.Logger) string {
-	bootDrive, err := utils.DetectBootableDrive()
-	if err == nil {
-		sxsPath := bootDrive + `\sources\sxs`
-		if utils.DirExists(sxsPath) {
-			logger.Info("resolve-sxs", "SUCCESS", fmt.Sprintf("Auto-detected bootable drive: %s (path: %s)", bootDrive, sxsPath), 0, nil)
-			return sxsPath
-		}
-		logger.Warn("resolve-sxs", "WARNING", fmt.Sprintf("Drive %s detected but %s does not exist", bootDrive, sxsPath), 0, nil)
-	} else {
-		logger.Warn("resolve-sxs", "WARNING", fmt.Sprintf("Auto-detection failed: %v", err), 0, nil)
-	}
-
-	localSxs := filepath.Join(rootDir, "sources", "sxs")
-	if sxsDirValid(localSxs) {
-		logger.Info("resolve-sxs", "SUCCESS", fmt.Sprintf("Using local sources folder: %s", localSxs), 0, nil)
-		return localSxs
-	}
-
-	input, err := utils.PromptBootableDrive()
-	if err != nil {
-		fmt.Printf("ERROR: %v\n", err)
-		return ""
-	}
-
-	// User entered a drive letter like "D:" — build full path
-	if len(input) == 2 && input[1] == ':' {
-		input = input + `\sources\sxs`
-	}
-	// User entered a full path like "D:\sources\sxs" or "D:\"
-	if strings.HasSuffix(strings.ToLower(input), `\sources\sxs`) {
-		// already correct
-	} else if strings.HasSuffix(input, `\`) || strings.HasSuffix(input, `/`) {
-		input = input + `sources\sxs`
-	} else if !strings.Contains(strings.ToLower(input), `\sources`) {
-		input = input + `\sources\sxs`
-	}
-
-	input = filepath.Clean(input)
-	if utils.DirExists(input) {
-		logger.Info("resolve-sxs", "SUCCESS", fmt.Sprintf("User-provided path: %s", input), 0, nil)
-		return input
-	}
-
-	logger.Warn("resolve-sxs", "FAILED", fmt.Sprintf("Path does not exist: %s", input), 0, nil)
-	fmt.Printf("ERROR: Path does not exist or is not accessible: %s\n", input)
-	return ""
-}
-
-// sxsDirValid reports whether path is a directory containing at least one
-// .cab file (a valid Windows sources\sxs media with the .NET 3.5 payload).
-func sxsDirValid(path string) bool {
-	if !utils.DirExists(path) {
-		return false
-	}
-	matches, err := filepath.Glob(filepath.Join(path, "*.cab"))
-	return err == nil && len(matches) > 0
-}
-
-// runInstallerTasks installs all configured applications and creates shortcuts.
-// Copy-only apps are never executed — they are reported as delivered since the
-// copy phase already placed their folder in the destination.
-func runInstallerTasks(ctx context.Context, apps []models.AppDefinition, softwareDestination string, runTask func(string, string, func() models.TaskResult) models.TaskResult) {
-	for _, app := range apps {
-		app := app
-		if app.CopyOnly {
-			runTask("installer", app.Name, func() models.TaskResult {
-				return models.TaskResult{
-					Name:     app.Name,
-					Module:   "installer",
-					Status:   models.TaskStatusSkipped,
-					Message:  "Copy-only — folder copied to destination, installer not executed",
-					Duration: 0,
-				}
-			})
-			continue
-		}
-		runTask("installer", app.Name, func() models.TaskResult {
-			return installer.Install(ctx, app, softwareDestination)
-		})
-		if app.Deploy != nil {
-			runTask("installer", app.Name+" (deploy)", func() models.TaskResult {
-				installed, reason, _ := installer.IsInstalled(app)
-				if installed {
-					return models.TaskResult{
-						Name:     app.Name + " (deploy)",
-						Module:   "installer",
-						Status:   models.TaskStatusSkipped,
-						Message:  fmt.Sprintf("Installer confirmed install (%s)", reason),
-						Duration: 0,
-					}
-				}
-				return installer.Deploy(ctx, app, softwareDestination)
-			})
-		}
-		if app.DesktopShortcut.Enabled {
-			runTask("shortcut", app.Name+" Shortcut", func() models.TaskResult {
-				return shortcut.CreateDesktopShortcut(app)
-			})
-		}
-	}
-}
-
-// runDiscoveryPhase discovers and installs unlisted software directories.
+// runDiscoveryPhase installs software directories that apps.json does not
+// mention. The count is not known until this phase runs, so it is not part of
+// the pre-flight plan.
 func runDiscoveryPhase(
 	ctx context.Context,
 	softwareDestination string,
@@ -421,166 +314,92 @@ func runDiscoveryPhase(
 	}
 }
 
-func resolveDestination(settings *models.Settings) (string, error) {
-	folderName := settings.Destination.FolderName
-	if folderName == "" {
-		folderName = "Softwares"
+// resolveSxSPath returns a validated sources\sxs path for DISM, trying in order:
+//  1. the tool's own sources\sxs folder, so a prepared USB is self-sufficient
+//     and needs no second flash attached
+//  2. a bootable Windows drive, for when the USB has no payload
+//  3. a path typed by the operator
+//
+// Returns an empty string if none of those yields a usable directory.
+func resolveSxSPath(rootDir string, logger logging.Logger) string {
+	localSxs := filepath.Join(rootDir, "sources", "sxs")
+	if utils.IsSxSDirectory(localSxs) {
+		logger.Info("resolve-sxs", "SUCCESS", fmt.Sprintf("Using local sources folder: %s", localSxs), 0, nil)
+		return localSxs
 	}
 
-	// Always prefer the data volume created by EnsureSecondaryPartition
-	// (labelled "Data" — the partition made by shrinking C: by 50%).
-	// Only if that volume is missing do we fall back to any other fixed
-	// non-C: drive, and finally ask the user for a destination.
-	preferredCmd := exec.Command("powershell", "-NoProfile", "-Command",
-		`Get-Volume | Where-Object { $_.FileSystemLabel -eq 'Data' -and $_.DriveLetter -ne '' -and $_.DriveLetter -ne $null } | Select-Object -First 1 -ExpandProperty DriveLetter`)
-	if out, err := preferredCmd.Output(); err == nil {
-		letter := strings.TrimSpace(string(out))
-		if letter != "" {
-			drive := letter + `:\`
-			autoPath := drive + folderName
-			if !utils.DirExists(autoPath) {
-				_ = utils.EnsureDir(autoPath)
-			}
-			fmt.Printf("  Using: %s (data volume from C: shrink)\n", autoPath)
-			return drive, nil
-		}
+	logger.Warn("resolve-sxs", "WARNING",
+		fmt.Sprintf("No .cab payload in %s, looking for a bootable Windows drive", localSxs), 0, nil)
+
+	if path, ok := detectBootableSxS(logger); ok {
+		return path
 	}
 
-	// Auto-detect: find any fixed (non-removable) drive that isn't C:.
-	// The letter could be D:, E:, F:, etc. depending on what's plugged in.
-	// USB/removable drives are excluded.
-	checkCmd := exec.Command("powershell", "-NoProfile", "-Command",
-		`Get-Volume | Where-Object { $_.DriveType -eq 'Fixed' -and $_.DriveLetter -ne 'C' -and $_.DriveLetter -ne '' -and $_.DriveLetter -ne $null } | Select-Object -First 1 -ExpandProperty DriveLetter`)
-	out, err := checkCmd.Output()
-	if err == nil {
-		letter := strings.TrimSpace(string(out))
-		if letter != "" {
-			drive := letter + `:\`
-			autoPath := drive + folderName
-			if !utils.DirExists(autoPath) {
-				_ = utils.EnsureDir(autoPath)
-			}
-			fmt.Printf("  Using: %s\n", autoPath)
-			return drive, nil
-		}
-	}
-
-	// No secondary drive found — ask the user.
-	userPath, promptErr := utils.PromptDestinationFolder(folderName)
-	if promptErr != nil {
-		return "", fmt.Errorf("destination folder: %w", promptErr)
-	}
-	return userPath, nil
+	return promptSxSPath(logger)
 }
 
-// taskPlan captures the planned tasks for both progress counting and summary display.
-type taskPlan struct {
-	actions []taskPlanEntry
+// detectBootableSxS looks for Windows installation media with a valid
+// sources\sxs payload.
+func detectBootableSxS(logger logging.Logger) (string, bool) {
+	bootDrive, err := utils.DetectBootableDrive()
+	if err != nil {
+		logger.Warn("resolve-sxs", "WARNING", fmt.Sprintf("Auto-detection failed: %v", err), 0, nil)
+		return "", false
+	}
+
+	sxsPath := bootDrive + `\sources\sxs`
+	if utils.IsSxSDirectory(sxsPath) {
+		logger.Info("resolve-sxs", "SUCCESS",
+			fmt.Sprintf("Auto-detected bootable drive: %s (path: %s)", bootDrive, sxsPath), 0, nil)
+		return sxsPath, true
+	}
+
+	logger.Warn("resolve-sxs", "WARNING",
+		fmt.Sprintf("Drive %s detected but %s does not exist", bootDrive, sxsPath), 0, nil)
+	return "", false
 }
 
-type taskPlanEntry struct {
-	summary string
-	count   int
+// promptSxSPath asks the operator where the .NET payload is, accepting a bare
+// drive letter, a drive root, or a full sources\sxs path.
+func promptSxSPath(logger logging.Logger) string {
+	input, err := utils.PromptBootableDrive()
+	if err != nil {
+		fmt.Printf("ERROR: %v\n", err)
+		return ""
+	}
+
+	input = normalizeSxSInput(input)
+	if utils.IsSxSDirectory(input) {
+		logger.Info("resolve-sxs", "SUCCESS", fmt.Sprintf("User-provided path: %s", input), 0, nil)
+		return input
+	}
+
+	logger.Warn("resolve-sxs", "FAILED", fmt.Sprintf("Path does not exist: %s", input), 0, nil)
+	fmt.Printf("ERROR: Path does not exist or is not accessible: %s\n", input)
+	return ""
 }
 
-func (p *taskPlan) TotalTasks() int {
-	total := 0
-	for _, a := range p.actions {
-		total += a.count
+// normalizeSxSInput expands whatever the operator typed into a full
+// sources\sxs path: "D:", "D:\" and "D:\sources\sxs" are all accepted.
+func normalizeSxSInput(input string) string {
+	input = strings.TrimSpace(input)
+	if input == "" {
+		return input
 	}
-	return total
-}
+	// SxS media is only ever read on Windows, so separators are normalised here
+	// instead of relying on filepath, which would follow the host platform.
+	input = strings.ReplaceAll(input, "/", `\`)
 
-func (p *taskPlan) ActionSummary() []string {
-	summary := make([]string, 0, len(p.actions))
-	for _, a := range p.actions {
-		summary = append(summary, a.summary)
+	lower := strings.ToLower(input)
+	switch {
+	case strings.HasSuffix(lower, `\sxs`):
+		// Already points at an sxs directory; leave the path alone.
+	case len(input) == 2 && input[1] == ':':
+		input += `\sources\sxs`
+	case strings.HasSuffix(input, `\`):
+		input += `sources\sxs`
+	case !strings.Contains(lower, `\sources`):
+		input += `\sources\sxs`
 	}
-	return summary
-}
-
-// buildTaskPlan constructs a single task plan from settings and apps. This
-// eliminates the DRY violation between counting tasks and building summaries.
-func buildTaskPlan(settings *models.Settings, apps []models.AppDefinition) *taskPlan {
-	plan := &taskPlan{}
-
-	plan.actions = append(plan.actions, taskPlanEntry{
-		summary: "Copy software payloads to destination drive",
-		count:   1,
-	})
-
-	if settings.Windows.DisableFirewall {
-		plan.actions = append(plan.actions, taskPlanEntry{
-			summary: "Disable Windows Firewall",
-			count:   1,
-		})
-	}
-	if settings.Windows.EnableRemoteDesktop {
-		plan.actions = append(plan.actions, taskPlanEntry{
-			summary: "Enable Remote Desktop",
-			count:   1,
-		})
-	}
-	if settings.Windows.EnableAdministrator {
-		plan.actions = append(plan.actions, taskPlanEntry{
-			summary: "Set built-in Administrator password",
-			count:   1,
-		})
-		plan.actions = append(plan.actions, taskPlanEntry{
-			summary: "Enable built-in Administrator account",
-			count:   1,
-		})
-	}
-	if settings.Windows.ShowFileExtensions {
-		plan.actions = append(plan.actions, taskPlanEntry{
-			summary: "Show file extensions",
-			count:   1,
-		})
-	}
-	if settings.Windows.ShowHiddenFiles {
-		plan.actions = append(plan.actions, taskPlanEntry{
-			summary: "Show hidden files",
-			count:   1,
-		})
-	}
-	if settings.Windows.InstallDotNet35 {
-		plan.actions = append(plan.actions, taskPlanEntry{
-			summary: "Install .NET Framework 3.5",
-			count:   1,
-		})
-	}
-	if settings.Windows.DisableWindowsUpdate {
-		plan.actions = append(plan.actions, taskPlanEntry{
-			summary: "Disable Windows Update",
-			count:   1,
-		})
-	}
-
-	for _, app := range apps {
-		if app.CopyOnly {
-			plan.actions = append(plan.actions, taskPlanEntry{
-				summary: fmt.Sprintf("Copy %s (not installed)", app.Name),
-				count:   1,
-			})
-			continue
-		}
-		plan.actions = append(plan.actions, taskPlanEntry{
-			summary: fmt.Sprintf("Install %s", app.Name),
-			count:   1,
-		})
-		if app.Deploy != nil {
-			plan.actions = append(plan.actions, taskPlanEntry{
-				summary: fmt.Sprintf("Deploy %s (fallback)", app.Name),
-				count:   1,
-			})
-		}
-		if app.DesktopShortcut.Enabled {
-			plan.actions = append(plan.actions, taskPlanEntry{
-				summary: fmt.Sprintf("Create desktop shortcut for %s", app.Name),
-				count:   1,
-			})
-		}
-	}
-
-	return plan
+	return filepath.Clean(input)
 }

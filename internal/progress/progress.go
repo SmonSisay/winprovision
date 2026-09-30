@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/fatih/color"
 	"github.com/SmonSisay/winprovision/internal/models"
+	"github.com/fatih/color"
 )
 
 type Display struct {
@@ -199,10 +199,6 @@ func (d *Display) ShowFinalReport() {
 
 	fmt.Print("  Press Enter to close this window...")
 	fmt.Scanln()
-}
-
-func (d *Display) Results() []models.TaskResult {
-	return append([]models.TaskResult(nil), d.results...)
 }
 
 func (d *Display) HasFailures() bool {

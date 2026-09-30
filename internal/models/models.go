@@ -65,21 +65,21 @@ type AppsConfig struct {
 // application is not detected afterwards, the pre-extracted payload under
 // Deploy.SourceDir is deployed directly (fonts, COM registration, etc.).
 type AppDefinition struct {
-	Name             string          `json:"name"`
-	InstallerPath    string          `json:"installerPath"`
-	SilentArgs       string          `json:"silentArgs"`
-	Version          string          `json:"version"`
-	AlwaysInstall    bool            `json:"alwaysInstall"`
-	CopyOnly         bool            `json:"copyOnly"`
-	AttendedFallback bool            `json:"attendedFallback"`
+	Name             string `json:"name"`
+	InstallerPath    string `json:"installerPath"`
+	SilentArgs       string `json:"silentArgs"`
+	Version          string `json:"version"`
+	AlwaysInstall    bool   `json:"alwaysInstall"`
+	CopyOnly         bool   `json:"copyOnly"`
+	AttendedFallback bool   `json:"attendedFallback"`
 	// AttendedOnly skips any silent attempt and goes straight to the
 	// interactive wizard. Use when the installer rejects every silent flag
 	// (e.g. Power Geez's ADVINSTSFX bootstrapper pops an "Invalid command
 	// line" error for /s and then falls back to the wizard anyway).
-	AttendedOnly bool `json:"attendedOnly"`
-	DesktopShortcut  ShortcutConfig  `json:"desktopShortcut"`
-	Detection        DetectionRule   `json:"detection"`
-	Deploy           *DeployConfig   `json:"deploy,omitempty"`
+	AttendedOnly    bool           `json:"attendedOnly"`
+	DesktopShortcut ShortcutConfig `json:"desktopShortcut"`
+	Detection       DetectionRule  `json:"detection"`
+	Deploy          *DeployConfig  `json:"deploy,omitempty"`
 }
 
 // DeployConfig describes a deterministic, installer-free installation of a
@@ -133,9 +133,41 @@ type CopyStats struct {
 	Failed  int
 }
 
+// The Succeed/Skip/Fail helpers stamp the elapsed time on a result. Every task
+// exit path needs that, so it is applied in one place rather than repeated at
+// each return.
+
+// Succeed returns a successful result carrying the given message.
+func (t TaskResult) Succeed(start time.Time, message string) TaskResult {
+	t.Status = TaskStatusSuccess
+	t.Message = message
+	return t.stampDuration(start)
+}
+
+// Skip returns a skipped result, for work that was not needed.
+func (t TaskResult) Skip(start time.Time, message string) TaskResult {
+	t.Status = TaskStatusSkipped
+	t.Message = message
+	return t.stampDuration(start)
+}
+
+// Fail returns a failed result carrying both a human-readable message and the
+// underlying error for the log.
+func (t TaskResult) Fail(start time.Time, message string, err error) TaskResult {
+	t.Status = TaskStatusFailed
+	t.Message = message
+	t.Err = err
+	return t.stampDuration(start)
+}
+
+func (t TaskResult) stampDuration(start time.Time) TaskResult {
+	t.Duration = time.Since(start)
+	return t
+}
+
 // ExitCode constants for the provisioning tool.
 const (
-	ExitSuccess        = 0
-	ExitTaskFailures   = 1
-	ExitFatal          = 2
+	ExitSuccess      = 0
+	ExitTaskFailures = 1
+	ExitFatal        = 2
 )
