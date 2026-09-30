@@ -32,7 +32,8 @@
 
             <!-- First: bypass TPM / Secure Boot / RAM checks so Win11 installs
                  on older hardware. Disk 0 is wiped and partitioned below by
-                 DiskConfiguration (C: only; D: is created later by Setup.exe). -->
+                 DiskConfiguration into a fixed-size C: plus a data volume that
+                 takes the remainder. Setup.exe never touches partitioning. -->
             <RunSynchronous>
                 <RunSynchronousCommand wcm:action="add">
                     <Order>1</Order>
@@ -51,8 +52,13 @@
                 </RunSynchronousCommand>
             </RunSynchronous>
 
-            <!-- Disk layout: wipe entire disk, create C: only.
-                 D: will be created later by Setup.exe. -->
+            <!-- Disk layout: wipe entire disk, create C: plus a data volume.
+
+                 C: is given a FIXED size because Windows Setup only allows
+                 <Extend>true</Extend> on the LAST partition of a disk, so the
+                 data volume takes whatever is left. The C: size below must
+                 leave room on a >= 128 GB disk; on anything smaller the install
+                 cannot complete. Adjust it here and nowhere else. -->
             <DiskConfiguration>
                 <Disk wcm:action="add">
                     <CreatePartitions>
@@ -68,9 +74,16 @@
                             <Type>MSR</Type>
                             <Size>16</Size>
                         </CreatePartition>
-                        <!-- C: partition — rest of disk -->
+                        <!-- C: partition — fixed size (~97.6 GiB) -->
                         <CreatePartition wcm:action="add">
                             <Order>3</Order>
+                            <Type>Primary</Type>
+                            <Size>100000</Size>
+                            <Extend>false</Extend>
+                        </CreatePartition>
+                        <!-- Data volume — takes the rest of the disk -->
+                        <CreatePartition wcm:action="add">
+                            <Order>4</Order>
                             <Type>Primary</Type>
                             <Extend>true</Extend>
                         </CreatePartition>
@@ -92,6 +105,14 @@
                             <Letter>C</Letter>
                             <Format>NTFS</Format>
                             <Primary>true</Primary>
+                        </ModifyPartition>
+                        <ModifyPartition wcm:action="add">
+                            <Order>4</Order>
+                            <TypeID>EBD0A0A2-B9E5-4433-87C0-68B6B72699C7</TypeID>
+                            <Label>Data</Label>
+                            <Letter>D</Letter>
+                            <Format>NTFS</Format>
+                            <Active>false</Active>
                         </ModifyPartition>
                     </ModifyPartitions>
 
@@ -116,11 +137,11 @@
                 </OSImage>
             </ImageInstall>
 
+            <!-- No <ProductKey> element on purpose. A product key is not needed
+                 for a KMS/digital-licence activation, and supplying an empty
+                 <Key></Key> here makes Windows Setup reject the answer file
+                 outright. The firmware key/OEM licence is used instead. -->
             <UserData>
-                <ProductKey>
-                    <Key></Key>
-                    <WillShowUI>Never</WillShowUI>
-                </ProductKey>
                 <AcceptEula>true</AcceptEula>
             </UserData>
 
@@ -237,7 +258,7 @@
             <FirstLogonCommands>
                 <!-- Find the USB drive (has Setup.exe + config/) and launch it directly.
                      Do NOT copy to C:\ — Setup.exe needs to run from the same drive
-                     as software/, config/, and run_setup.bat. -->
+                     as software/ and config/. -->
                 <SynchronousCommand wcm:action="add">
                     <Order>1</Order>
                     <CommandLine>cmd /c for %%d in (D E F G H I J K L M N O P Q R S T U V W X Y Z) do @if exist %%d:\Setup.exe if exist %%d:\config\settings.json (%%d:\Setup.exe &amp; goto :done3) &amp; :done3</CommandLine>
