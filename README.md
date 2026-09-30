@@ -6,7 +6,7 @@ Copies software silently, configures Windows settings, installs applications, an
 
 ## What it does
 
-1. **Copies software** from the USB to a secondary drive (or a user-specified folder)
+1. **Copies software** from the USB to the largest non-system fixed volume (or a folder the operator types)
 2. **Configures Windows** — disables firewall, enables RDP, activates built-in Administrator, shows file extensions, shows hidden files
 3. **Installs .NET Framework 3.5** from local `sources\sxs` when needed
 4. **Installs applications** using their silent installer arguments
@@ -34,7 +34,6 @@ USB_ROOT/
 │   └── ...                   ← drop any installer folder here
 ├── sources/
 │   └── sxs/                  ← .NET 3.5 payload (copy NetFx3.cab here to be self-contained)
-├── assets/                   ← optional assets
 └── logs/                     ← created at runtime
 ```
 
@@ -187,28 +186,85 @@ The tool checks if an application is already installed before running the instal
 1. Verify Administrator privileges (exit code 2 if not elevated)
 2. Load `config/settings.json` and `config/apps.json`
 3. Initialize structured file logger
-4. Detect destination drive (`D:`, `E:`, etc.) or prompt for a folder
-5. Build task plan from configuration
-6. Display banner, destination, and action summary
-7. Prompt for user confirmation
-8. Execute tasks in order:
+4. Detect the destination volume (see [Destination resolution](#destination-resolution)) or prompt for a folder
+5. Verify the destination has enough free space for the payload — exits with code 2 if not
+6. Build task plan from configuration
+7. Display banner, destination, and action summary
+8. Prompt for user confirmation
+9. Execute tasks in order:
    - Copy `software/` to `<Destination>\Software` (idempotent sync)
    - Apply Windows configuration (firewall, RDP, admin, explorer settings)
-   - Enable .NET Framework 3.5 (auto-detects a bootable Windows drive first, then its own `sources\sxs`, then prompts)
+   - Enable .NET Framework 3.5 (uses its own `sources\sxs` first, then a bootable Windows drive, then prompts)
    - Install each configured application
    - Create desktop shortcuts
    - Auto-discover and run unlisted installers
-9. Print final provisioning summary
-10. Write structured logs to `logs/setup.log`
+10. Print final provisioning summary
+11. Write structured logs to `logs/setup.log`
+
+### Destination resolution
+
+`Setup.exe` **never creates, resizes, formats, or deletes partitions.** The disk
+layout is laid down once during OS installation by `autounattend.xml`, which
+creates a fixed-size `C:` plus a data volume taking the remainder of the disk.
+By the time provisioning starts, the layout already exists.
+
+The destination is then chosen at runtime, in this order:
+
+1. **The largest fixed volume that is not the system drive.** Selected by size
+   rather than by a hardcoded letter, because the letter the data volume
+   receives during install depends on what else is attached — it may be `D:`,
+   `E:`, or `F:`.
+2. **A folder typed by the operator**, when no suitable volume is found and
+   `destination.promptIfNoSecondaryDrive` is `true`.
+
+Volumes are filtered before ranking:
+
+| Filter | Why |
+|--------|-----|
+| `DriveType -eq 'Fixed'` | Excludes the removable USB that `Setup.exe` is running from — the payload must never be copied back onto its own source media |
+| Drive letter present | The payload is addressed by drive letter |
+| `FileSystem` non-empty | Excludes unformatted OEM/recovery volumes that would otherwise be candidates |
+
+Both paths return a **root** (`D:\`), never the finished software folder.
+`destination.folderName` is appended exactly once, by
+`ResolveSoftwareDestination`, so the result is always `<root>\<folderName>` —
+for example `D:\Softwares`, never `D:\Softwares\Softwares`.
+
+### Destination space requirement
+
+Before anything is copied, the tool measures `software/` and compares it with
+the free space on the destination volume.
+
+- **Required** = payload size + 512 MiB headroom, so the volume is not left
+  completely full after the copy
+- If free space is short, provisioning stops immediately with a report showing
+  the destination, the required size, the available size, and the shortfall.
+  Sizes use binary (IEC) units — `MiB`/`GiB`, not `MB`/`GB` — and the exact byte
+  counts are printed alongside, because a rounded `4.5 GiB` vs `4.5 GiB` can
+  otherwise hide a one-byte shortfall
+- If free space **cannot be measured** (network or virtual volume) or the
+  payload cannot be measured (missing `software/`), the tool warns and
+  continues — a check that cannot be performed must not block a machine that
+  would otherwise provision fine
+
+The check runs before the confirmation prompt, so an undersized destination is
+reported before the operator commits to anything, and never leaves a
+half-provisioned machine behind.
 
 ### .NET Framework 3.5 source
 
 When `windows.installDotNet35` is `true`, the tool locates the .NET 3.5 payload
 (`NetFx3.cab`, i.e. `microsoft-windows-netfx3-ondemand-package*.cab`) in this order:
 
-1. A bootable Windows drive plugged into the machine (auto-detected)
-2. **The tool's own `sources\sxs` folder** (makes the USB self-contained)
+1. **The tool's own `sources\sxs` folder** — checked first, so a prepared USB
+   works on any machine with no second flash attached
+2. A bootable Windows drive plugged into the machine (auto-detected)
 3. A path typed by the operator when prompted
+
+A folder only counts as a valid source if it exists and holds at least one
+`.cab` file; an empty `sources\sxs` is skipped and the search falls through to
+the next option, so leaving the directory in place but forgetting the payload
+degrades to auto-detection rather than failing.
 
 To make the USB self-sufficient, copy the cab from a Windows installation media into
 `<USB>\sources\sxs` once:
@@ -217,7 +273,7 @@ To make the USB self-sufficient, copy the cab from a Windows installation media 
 sources/sxs/microsoft-windows-netfx3-ondemand-package~31bf3856ad364e35~amd64~~.cab
 ```
 
-Then the provisioning USB works on any computer with no second bootable flash.
+The cab is ~68 MB and is gitignored, so it must be copied to each USB by hand.
 
 ## Exit codes
 
@@ -225,12 +281,14 @@ Then the provisioning USB works on any computer with no second bootable flash.
 |------|---------|
 | `0` | Success (skipped tasks are allowed) |
 | `1` | One or more tasks failed |
-| `2` | Fatal startup error (not admin, missing config, etc.) |
+| `2` | Fatal startup error (not admin, missing config, insufficient destination space, etc.) |
 
 ## Safety guarantees
 
 - **Panic recovery**: Any task that panics is caught, logged, and recorded as failed — execution continues to the next task
 - **Idempotent**: Re-running skips tasks that are already complete (detected via registry, file existence, etc.)
+- **No disk writes**: `Setup.exe` cannot create, resize, format, or delete partitions — the layout is created by `autounattend.xml` during OS installation
+- **Preflight space check**: provisioning stops before starting if the destination cannot hold the payload
 - **No hardcoded paths**: All paths are resolved relative to the executable
 - **No hardcoded passwords**: Use `ADMIN_PASSWORD` environment variable
 - **Password security**: Administrator password is set via Win32 API, not command-line arguments
@@ -239,18 +297,22 @@ Then the provisioning USB works on any computer with no second bootable flash.
 ## Development
 
 ```bash
-# Run tests
-go test ./...
-
-# Run tests + vet
-make check
-
 # Build for Windows
 make build
 
+# Vet
+make vet
+
 # Lint (requires staticcheck)
 make lint
+
+# Remove build output
+make clean
 ```
+
+This project ships without a Go test suite. `make test` is retained for
+compatibility but currently has no test files to run. Verification is done by
+running the built `Setup.exe` against the manual [testing checklist](#testing-checklist).
 
 ### Project structure
 
@@ -277,6 +339,10 @@ internal/windows/       Firewall, RDP, Administrator, Explorer configuration
 - [ ] Run a second time — confirm most tasks show `SKIPPED`
 - [ ] Remove one installer from `software/` — confirm provisioning continues with error in summary
 - [ ] Test on a machine with no secondary drive — confirm folder prompt works
+- [ ] Test the folder prompt with a bare drive (`D:\`) and with a folder (`D:\Work\`) — confirm the destination is always `<root>\<folderName>` and never duplicated
+- [ ] Confirm `Setup.exe` leaves the partition table untouched — capture `Get-Partition` before and after a full run and diff
+- [ ] Point the destination at a volume too small for the payload — confirm the shortfall report appears, the tool exits 2, and nothing was copied
+- [ ] Confirm the destination is the **largest** non-system fixed volume, not merely the first one the OS happens to report
 - [ ] Verify `.NET Framework 3.5` installs from `sources\sxs` when not already enabled
 - [ ] Verify `logs/setup.log` contains structured entries with timestamp, module, action, duration, status
 - [ ] Test panic recovery by providing a broken installer path — confirm tool continues
