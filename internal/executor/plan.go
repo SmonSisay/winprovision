@@ -28,6 +28,13 @@ type plannedTask struct {
 	summary string
 	run     func(ctx context.Context) models.TaskResult
 
+	// requiresCopy marks a task that reads from the copied software payload.
+	// When the copy has failed these are skipped instead of run: an installer
+	// pointed at a folder that was never populated reports a misleading
+	// "installer not found" or launches from an incomplete package, turning one
+	// real fault into a cascade of unrelated-looking ones.
+	requiresCopy bool
+
 	// after, when set, is called with the result as soon as this task
 	// finishes. It exists so a task can highlight its own outcome immediately
 	// rather than only at the end of the run.
@@ -37,6 +44,11 @@ type plannedTask struct {
 // taskPlan is an ordered list of tasks, in execution order.
 type taskPlan struct {
 	tasks []plannedTask
+
+	// copyOK tracks whether the software payload reached the destination. It is
+	// false only once the copy task has actually run and failed, so a plan that
+	// is never executed does not skip everything.
+	copyOK bool
 }
 
 // buildTaskPlan turns the loaded configuration into the ordered task list.
@@ -49,7 +61,7 @@ type taskPlan struct {
 // Auto-discovery is absent from the plan, because the work it finds is only
 // known once the destination has been scanned.
 func buildTaskPlan(env *environment) *taskPlan {
-	plan := &taskPlan{}
+	plan := &taskPlan{copyOK: true}
 	plan.addCopyTask(env)
 	plan.addWindowsTasks(env.settings)
 	plan.addDotNetTask(env)
@@ -69,7 +81,10 @@ func (p *taskPlan) addCopyTask(env *environment) {
 		run: func(context.Context) models.TaskResult {
 			return runCopyPhase(env.rootDir, env.destination, env.logger)
 		},
-		after: warnIfCopyFailed,
+		after: func(result models.TaskResult) {
+			p.copyOK = result.Status != models.TaskStatusFailed
+			warnIfCopyFailed(result)
+		},
 	})
 }
 
@@ -92,8 +107,19 @@ func (p *taskPlan) ActionSummary() []string {
 }
 
 // execute runs every task in order, reporting each to the display and the log.
+//
+// A failing task never stops the ones after it: provisioning a machine that is
+// missing one application is more useful than leaving it half-built because of
+// it. The only exception is a task that depends on the software copy, which is
+// skipped when the copy failed, since running it can only produce a misleading
+// error.
 func (p *taskPlan) execute(ctx context.Context, display *progress.Display, logger logging.Logger) {
 	for _, task := range p.tasks {
+		if task.requiresCopy && !p.copyOK {
+			p.reportSkipped(task, display, logger)
+			continue
+		}
+
 		display.TaskStart(task.module, task.label)
 		result := safeRunTask(func() models.TaskResult { return task.run(ctx) })
 		display.TaskComplete(result)
@@ -110,16 +136,38 @@ func (p *taskPlan) execute(ctx context.Context, display *progress.Display, logge
 	}
 }
 
-// warnIfCopyFailed explains that a failed copy is the likely cause of the
-// installer failures that follow, so the operator looks in the right place
-// instead of at a cascade of unrelated-looking errors.
+// reportSkipped records a task that was not run because the software copy
+// failed. It is reported as SKIPPED rather than FAILED: the task itself never
+// had the chance to fail, and the real fault is already recorded against the
+// copy task.
+func (p *taskPlan) reportSkipped(task plannedTask, display *progress.Display, logger logging.Logger) {
+	result := models.TaskResult{
+		Name:    task.label,
+		Module:  task.module,
+		Status:  models.TaskStatusSkipped,
+		Message: "Skipped — software copy failed, so the installer source is missing",
+	}
+	display.TaskComplete(result)
+	logger.WithModule(task.module).Info(
+		task.label,
+		string(result.Status),
+		result.Message,
+		0,
+		nil,
+	)
+}
+
+// warnIfCopyFailed tells the operator that the installers are being skipped and
+// why. Without it, a run that copies nothing looks like a run where ten
+// unrelated installers happened to fail.
 func warnIfCopyFailed(result models.TaskResult) {
 	if result.Status != models.TaskStatusFailed {
 		return
 	}
 	fmt.Println()
-	fmt.Println("WARNING: Software copy encountered failures.")
-	fmt.Println("         Installer tasks may fail because files are missing from the destination.")
+	fmt.Println("WARNING: Software copy failed.")
+	fmt.Println("         Install and deploy tasks will be skipped: their sources are not on the destination.")
+	fmt.Println("         Fix the copy (usually free space or the destination drive) and run Setup.exe again.")
 	fmt.Println()
 }
 
@@ -255,9 +303,10 @@ func (p *taskPlan) addAppTasks(apps []models.AppDefinition, softwareDestination 
 		}
 
 		p.add(plannedTask{
-			module:  "installer",
-			label:   app.Name,
-			summary: fmt.Sprintf("Install %s", app.Name),
+			module:       "installer",
+			label:        app.Name,
+			summary:      fmt.Sprintf("Install %s", app.Name),
+			requiresCopy: true,
 			run: func(ctx context.Context) models.TaskResult {
 				return installer.Install(ctx, app, softwareDestination)
 			},
@@ -267,9 +316,10 @@ func (p *taskPlan) addAppTasks(apps []models.AppDefinition, softwareDestination 
 		// runInstallerTasks checks IsInstalled at run time for exactly that.
 		if app.Deploy != nil {
 			p.add(plannedTask{
-				module:  "installer",
-				label:   app.Name + " (deploy)",
-				summary: fmt.Sprintf("Deploy %s (fallback)", app.Name),
+				module:       "installer",
+				label:        app.Name + " (deploy)",
+				summary:      fmt.Sprintf("Deploy %s (fallback)", app.Name),
+				requiresCopy: true,
 				run: func(ctx context.Context) models.TaskResult {
 					if installed, reason, _ := installer.IsInstalled(app); installed {
 						return models.TaskResult{

@@ -241,6 +241,13 @@ func (d *Display) ShowFinalReport() {
 	fmt.Scanln()
 }
 
+// Results returns the recorded task outcomes in completion order. It is the
+// authoritative view of what ran, which is what the exit code and the final
+// report are both derived from.
+func (d *Display) Results() []models.TaskResult {
+	return d.results
+}
+
 func (d *Display) HasFailures() bool {
 	for _, result := range d.results {
 		if result.Status == models.TaskStatusFailed {
