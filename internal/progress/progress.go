@@ -101,19 +101,37 @@ func (d *Display) TaskComplete(result models.TaskResult) {
 	fmt.Printf("           %s %3d%% %s\n", bar, taskPercent, statusText)
 }
 
+// unattendedEnv is the environment variable autounattend.xml sets when it
+// launches Setup.exe with no operator present. Its presence means nobody is
+// watching the screen, so the tool must never block waiting for a keypress.
+const unattendedEnv = "WINPROVISION_UNATTENDED"
+
+// Unattended reports whether Setup.exe was launched without an operator.
+// autounattend.xml sets this because its SynchronousCommand blocks Windows
+// Setup until the command returns: a prompt waiting on Enter there hangs the
+// whole installation with nobody to answer it.
+func Unattended() bool {
+	v := strings.TrimSpace(os.Getenv(unattendedEnv))
+	return v != "" && v != "0" && !strings.EqualFold(v, "false")
+}
+
 func (d *Display) ShowFinalReport() {
 	fmt.Println()
 	green := color.New(color.FgGreen, color.Bold)
 	red := color.New(color.FgRed, color.Bold)
 	cyan := color.New(color.FgCyan, color.Bold)
 
-	completedAll := d.total
-	if d.completed < d.total {
-		completedAll = d.completed
+	// d.total counts the planned tasks, but the auto-discovery phase adds
+	// results that were not in the plan, so completed can legitimately exceed
+	// it. Reporting "5/4" would look like a bug, so the denominator grows to
+	// fit whatever actually ran.
+	taskTotal := d.total
+	if d.completed > taskTotal {
+		taskTotal = d.completed
 	}
 	overallPercent := 0
-	if d.total > 0 {
-		overallPercent = (completedAll * 100) / d.total
+	if taskTotal > 0 {
+		overallPercent = (d.completed * 100) / taskTotal
 	}
 
 	cyan.Println("  ╔══════════════════════════════════════════════════════╗")
@@ -124,10 +142,29 @@ func (d *Display) ShowFinalReport() {
 	grey := color.New(color.Faint)
 	grey.Println("  ─── Summary ───")
 
-	var errCount, skipCount int
+	// Counts come from every recorded result, not just the ones with a name.
+	// Deriving "Passed" as completed-minus-failures instead would silently
+	// inflate it whenever a task finished without a name (a recovered panic),
+	// and the report would then disagree with itself.
+	var passCount, skipCount, errCount int
 	for _, r := range d.results {
-		if r.Name == "" {
-			continue
+		switch r.Status {
+		case models.TaskStatusSuccess:
+			passCount++
+		case models.TaskStatusSkipped:
+			skipCount++
+		case models.TaskStatusFailed:
+			errCount++
+		}
+	}
+
+	for _, r := range d.results {
+		// A task that failed without recording a name (a recovered panic) is
+		// counted in Failed, so it has to appear here too. Hiding it would
+		// leave the operator with a failure they cannot identify.
+		name := r.Name
+		if name == "" {
+			name = "(unidentified task)"
 		}
 		nameColor := color.New(color.FgWhite, color.Bold)
 		statusColor := color.New(color.FgGreen)
@@ -136,26 +173,21 @@ func (d *Display) ShowFinalReport() {
 		case models.TaskStatusSkipped:
 			statusColor = color.New(color.FgYellow)
 			icon = "-"
-			skipCount++
 		case models.TaskStatusFailed:
 			statusColor = color.New(color.FgRed)
 			icon = "✗"
-			errCount++
 		}
-		nameColor.Printf("  %s  %-30s", icon, r.Name)
+		nameColor.Printf("  %s  %-30s", icon, name)
 		statusColor.Printf("%s\n", r.Status)
-		if r.Status == models.TaskStatusFailed && r.Message != "" {
-			fmt.Printf("      └─ %s\n", r.Message)
-		}
-		if r.Status == models.TaskStatusSkipped && r.Message != "" {
+		if (r.Status == models.TaskStatusFailed || r.Status == models.TaskStatusSkipped) && r.Message != "" {
 			fmt.Printf("      └─ %s\n", r.Message)
 		}
 	}
 
 	grey.Println()
 	grey.Println("  ─── Stats ───")
-	fmt.Printf("  %-25s:  %d/%d (%d%%)\n", "Total tasks", d.completed, d.total, overallPercent)
-	fmt.Printf("  %-25s:  %d\n", "Passed", (d.completed - errCount - skipCount))
+	fmt.Printf("  %-25s:  %d/%d (%d%%)\n", "Total tasks", d.completed, taskTotal, overallPercent)
+	fmt.Printf("  %-25s:  %d\n", "Passed", passCount)
 	fmt.Printf("  %-25s:  %d\n", "Skipped", skipCount)
 	errColor := green
 	if errCount > 0 {
@@ -196,6 +228,14 @@ func (d *Display) ShowFinalReport() {
 	info.Println("  July 2026 G.C")
 	info.Println("  ─────────────────────────────────────────────")
 	fmt.Println()
+
+	// An unattended run has no operator to answer this prompt, and the caller
+	// is a blocking autounattend command, so waiting here would hang Windows
+	// Setup indefinitely. Everything the operator needs is in the log either way.
+	if Unattended() {
+		fmt.Println("  Unattended run — closing automatically.")
+		return
+	}
 
 	fmt.Print("  Press Enter to close this window...")
 	fmt.Scanln()

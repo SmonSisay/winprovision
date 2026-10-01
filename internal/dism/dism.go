@@ -82,12 +82,13 @@ func EnableDotNet35(ctx context.Context, sxsPath string) models.TaskResult {
 	}
 
 	if runErr != nil {
-		// Exit 3010 = success with pending reboot. Treat it as a successful
-		// install — the user will reboot after provisioning completes.
+		// Exit 3010 = the feature was enabled, DISM just notes a pending
+		// reboot. We never restart and do not ask for one, so this is reported
+		// as an ordinary success.
 		if exitCode == dismRebootRequired {
 			result.Status = models.TaskStatusSuccess
 			result.Message = fmt.Sprintf(
-				".NET Framework 3.5 enabled — reboot required (exit=%d, duration=%s, source=%s)",
+				".NET Framework 3.5 enabled (exit=%d, duration=%s, source=%s)",
 				exitCode,
 				duration.Round(time.Millisecond),
 				cleanPath,

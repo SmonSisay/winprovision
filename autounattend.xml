@@ -261,7 +261,7 @@
                      as software/ and config/. -->
                 <SynchronousCommand wcm:action="add">
                     <Order>1</Order>
-                    <CommandLine>cmd /c for %%d in (D E F G H I J K L M N O P Q R S T U V W X Y Z) do @if exist %%d:\Setup.exe if exist %%d:\config\settings.json (%%d:\Setup.exe &amp; goto :done3) &amp; :done3</CommandLine>
+                    <CommandLine>cmd /c set WINPROVISION_UNATTENDED=1&amp;&amp; for %%d in (D E F G H I J K L M N O P Q R S T U V W X Y Z) do @if exist %%d:\Setup.exe if exist %%d:\config\settings.json (%%d:\Setup.exe &amp; goto :done3) &amp; :done3</CommandLine>
                     <Description>Find and launch provisioning tool from USB</Description>
                     <RequiresUserInput>false</RequiresUserInput>
                 </SynchronousCommand>

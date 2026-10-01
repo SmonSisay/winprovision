@@ -3,6 +3,7 @@ package installer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -17,6 +18,44 @@ import (
 	"github.com/SmonSisay/winprovision/internal/registry"
 	"github.com/SmonSisay/winprovision/internal/utils"
 )
+
+// successExitCodes are non-zero installer exit codes that still mean the install
+// worked. InstallShield's setup.exe returns 1641 and Windows Installer / DISM
+// return 3010 when the product is installed but Windows wants a restart before
+// every change takes effect. We do not restart and do not report a pending
+// restart, so these are counted as ordinary successes; anything else non-zero
+// is a real failure.
+var successExitCodes = map[int]bool{1641: true, 3010: true}
+
+// installerExitError carries an installer's exit code alongside the exec error
+// so the attempt loop can tell a successful-but-restarting installer apart from
+// one that genuinely failed.
+type installerExitError struct {
+	code int
+	err  error
+}
+
+func (e *installerExitError) Error() string { return e.err.Error() }
+
+func (e *installerExitError) Unwrap() error { return e.err }
+
+// exitCodeOf returns the exit code an installer terminated with, or -1 when the
+// code is unavailable (the process was killed by a signal, or the error did not
+// come from running an installer at all).
+func exitCodeOf(err error) int {
+	var ie *installerExitError
+	if errors.As(err, &ie) {
+		return ie.code
+	}
+	return -1
+}
+
+// isSuccessExit reports whether err is a non-zero exit that still means the
+// install succeeded, and returns the exit code that said so.
+func isSuccessExit(err error) (code int, ok bool) {
+	code = exitCodeOf(err)
+	return code, code >= 0 && successExitCodes[code]
+}
 
 var fallbackSilentFlags = [][]string{
 	{"/S"},
@@ -222,6 +261,14 @@ func attemptInstall(
 			}
 			return result.Succeed(start, "Installed successfully")
 		}
+
+		// An installer that exited 1641/3010 has finished the install even though
+		// it asked for a restart. Stop here rather than trying the remaining
+		// attempts, which would re-run an install that already completed.
+		if code, ok := isSuccessExit(lastErr); ok {
+			return result.Succeed(start,
+				fmt.Sprintf("Installed successfully (exit=%d)", code))
+		}
 	}
 
 	if ranSilentAttempts(attempts) {
@@ -268,15 +315,34 @@ func silentFlagSets(app models.AppDefinition) [][]string {
 func launchInstaller(ctx context.Context, installerPath string, args []string) error {
 	var cmd *exec.Cmd
 	if strings.EqualFold(filepath.Ext(installerPath), ".msi") {
-		msiArgs := append([]string{"/i", installerPath}, args...)
+		// Verbose logging is the only way to tell "the package is wrong" apart
+		// from "a prerequisite is missing" — msiexec reports both as a bare
+		// exit code 1. The log is written next to the package on the
+		// provisioning drive so it survives the run and can be collected.
+		logPath := strings.TrimSuffix(installerPath, filepath.Ext(installerPath)) + ".msi.log"
+		msiArgs := append([]string{"/i", installerPath, "/l*v", logPath}, args...)
 		cmd = exec.CommandContext(ctx, "msiexec.exe", msiArgs...)
+		fmt.Printf("[installer] MSI verbose log: %s\n", logPath)
 	} else {
 		cmd = exec.CommandContext(ctx, installerPath, args...)
 	}
 	cmd.Dir = filepath.Dir(installerPath)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	return cmd.Run()
+
+	runErr := cmd.Run()
+	if runErr == nil {
+		return nil
+	}
+
+	// The exit code is only meaningful when the process actually ran to
+	// completion; a killed process reports -1 and must not be mistaken for a
+	// successful install.
+	code := -1
+	if cmd.ProcessState != nil {
+		code = cmd.ProcessState.ExitCode()
+	}
+	return &installerExitError{code: code, err: runErr}
 }
 
 // installerRunner adapts launchInstaller to the runFunc signature, binding the
@@ -676,13 +742,18 @@ func DiscoverAndInstall(
 		runErr := cmd.Run()
 		duration := time.Since(start)
 		if runErr != nil {
-			exitCode := 1
+			exitCode := -1
 			if cmd.ProcessState != nil {
 				exitCode = cmd.ProcessState.ExitCode()
 			}
-			result.Status = models.TaskStatusFailed
-			result.Message = fmt.Sprintf("Installer failed (exit=%d)", exitCode)
-			result.Err = fmt.Errorf("run discovered installer %s: %w", exePath, runErr)
+			if successExitCodes[exitCode] {
+				result.Status = models.TaskStatusSuccess
+				result.Message = fmt.Sprintf("Installed from %s (exit=%d)", filepath.Base(exePath), exitCode)
+			} else {
+				result.Status = models.TaskStatusFailed
+				result.Message = fmt.Sprintf("Installer failed (exit=%d)", exitCode)
+				result.Err = fmt.Errorf("run discovered installer %s: %w", exePath, runErr)
+			}
 		} else {
 			result.Status = models.TaskStatusSuccess
 			result.Message = "Installed from " + filepath.Base(exePath)

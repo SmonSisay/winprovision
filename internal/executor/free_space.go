@@ -2,8 +2,6 @@ package executor
 
 import (
 	"fmt"
-	"strconv"
-	"strings"
 
 	"github.com/SmonSisay/winprovision/internal/utils"
 )
@@ -22,9 +20,11 @@ const minDestinationHeadroom = 512 << 20
 //   - free space cannot be queried (network or virtual volume); the operator is
 //     warned instead
 //
-// When the requirement genuinely is not met, a generic report is printed and a
-// descriptive error is returned for the caller to surface.
-func checkDestinationSpace(softwareDestination, volumeRoot, payloadRoot string) error {
+// When the requirement is genuinely not met, the shortfall is reported on one
+// line and a descriptive error is returned for the caller to surface. The check
+// stays even though it is terse: it stops a run before a multi-gigabyte copy
+// starts, rather than after it has failed part-way.
+func checkDestinationSpace(volumeRoot, payloadRoot string) error {
 	payload, err := utils.DirSize(payloadRoot)
 	if err != nil {
 		fmt.Printf("  WARNING: could not measure %s (%v)\n", payloadRoot, err)
@@ -38,15 +38,14 @@ func checkDestinationSpace(softwareDestination, volumeRoot, payloadRoot string) 
 	}
 
 	available := int64(free)
-	return reportDestinationSpace(softwareDestination, volumeRoot, payload, available)
+	return reportDestinationSpace(volumeRoot, payload, available)
 }
 
 // reportDestinationSpace compares the measured payload against the available
-// space and prints the shortfall report when the requirement is not met. It is
-// separated from checkDestinationSpace so the decision can be exercised
-// deterministically, without depending on the free space of the host running
-// the tests.
-func reportDestinationSpace(softwareDestination, volumeRoot string, payload, available int64) error {
+// space and fails when the requirement is not met. It is separated from
+// checkDestinationSpace so the decision can be exercised deterministically,
+// without depending on the free space of the host running the tests.
+func reportDestinationSpace(volumeRoot string, payload, available int64) error {
 	required := payload + minDestinationHeadroom
 	if available >= required {
 		return nil
@@ -54,24 +53,8 @@ func reportDestinationSpace(softwareDestination, volumeRoot string, payload, ava
 
 	shortBy := required - available
 
-	fmt.Println()
-	fmt.Println("  ─── Insufficient Destination Space ───")
-	fmt.Println()
-	fmt.Printf("  Destination : %s\n", softwareDestination)
-	fmt.Printf("  Volume      : %s\n", volumeRoot)
-	fmt.Printf("  Required    : %s   (payload %s + %s headroom)\n",
-		humanBytes(required), humanBytes(payload), humanBytes(minDestinationHeadroom))
-	fmt.Printf("  Available   : %s\n", humanBytes(available))
-	fmt.Printf("  Short by    : %s\n", humanBytes(shortBy))
-	fmt.Println()
-	// The rounded figures above can read as equal for a one-byte difference,
-	// so the exact byte counts are given too.
-	fmt.Printf("  Exact       : need %s bytes, have %s bytes\n",
-		commas(required), commas(available))
-	fmt.Println()
-	fmt.Println("  This volume cannot hold the software payload.")
-	fmt.Println("  Pick a larger drive or free up space on it, then run Setup.exe again.")
-	fmt.Println()
+	fmt.Printf("  FATAL: %s cannot hold the software payload — need %s, have %s (short by %s).\n",
+		volumeRoot, humanBytes(required), humanBytes(available), humanBytes(shortBy))
 
 	return fmt.Errorf(
 		"insufficient free space on %s: need %s, have %s (short by %s)",
@@ -94,28 +77,4 @@ func humanBytes(n int64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %ciB", float64(n)/float64(div), "KMGTPE"[exp])
-}
-
-// commas renders a byte count with thousands separators.
-func commas(n int64) string {
-	sign := ""
-	if n < 0 {
-		sign, n = "-", -n
-	}
-	digits := strconv.FormatInt(n, 10)
-	if len(digits) <= 3 {
-		return sign + digits
-	}
-	var b strings.Builder
-	pre := len(digits) % 3
-	if pre > 0 {
-		b.WriteString(digits[:pre])
-	}
-	for i := pre; i < len(digits); i += 3 {
-		if b.Len() > 0 {
-			b.WriteByte(',')
-		}
-		b.WriteString(digits[i : i+3])
-	}
-	return sign + b.String()
 }

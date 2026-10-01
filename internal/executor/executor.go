@@ -179,7 +179,7 @@ func (e *environment) resolveDestination() (string, error) {
 // hold the payload.
 func (e *environment) checkDestinationSpace() error {
 	payloadRoot := filepath.Join(e.rootDir, "software")
-	return checkDestinationSpace(e.destination, e.destinationRoot, payloadRoot)
+	return checkDestinationSpace(e.destinationRoot, payloadRoot)
 }
 
 // confirmOrAbort shows the plan and asks the operator to approve it. It returns
@@ -199,6 +199,14 @@ func (e *environment) confirmOrAbort(plan *taskPlan) error {
 	e.display.ShowBanner(e.opts.Version, e.windows, e.username)
 	e.display.ShowDestination(e.destination)
 	e.display.ShowActionSummary(plan.ActionSummary())
+
+	// Nobody is at the keyboard during an unattended install, so asking would
+	// either read EOF and abort or wait forever. The plan is still printed and
+	// written to the log, so it remains reviewable after the fact.
+	if progress.Unattended() {
+		fmt.Println("  Unattended run — proceeding without confirmation.")
+		return nil
+	}
 
 	confirmed, err := e.opts.Confirm()
 	if err != nil {
@@ -232,6 +240,7 @@ func (e *environment) finish() int {
 		elapsed,
 		nil,
 	)
+
 	if e.display.HasFailures() {
 		return models.ExitTaskFailures
 	}
