@@ -212,20 +212,40 @@ func (d *Display) ShowFinalReport() {
 	completedArt.Println(`/___/_____/_/ |_\____/_____/_____/ `)
 	completedArt.Println(`        C O M P L E T E D        `)
 	completedArt.Println()
+	// The first checklist item is the one the officer acts on, so it must not
+	// claim every application is working while the stats above report
+	// failures. Naming them turns the contradiction into the instruction.
+	var failedNames []string
+	for _, r := range d.results {
+		if r.Status == models.TaskStatusFailed {
+			name := r.Name
+			if name == "" {
+				name = "(unidentified task)"
+			}
+			failedNames = append(failedNames, name)
+		}
+	}
+
 	info := color.New(color.FgCyan, color.Bold)
 	info.Println("  ─────────────────────────────────────────────")
 	info.Println("  IT Officers — please verify:")
 	info.Println()
-	info.Println("  • All applications are installed and working")
-	info.Println("  • Run the slave for your branch")
-	info.Println("  • Add the computer to the domain")
+	if errCount == 0 {
+		info.Println("  • All applications are installed and working")
+	} else {
+		red.Printf("  • Failed: %s\n", strings.Join(failedNames, ", "))
+	}
+	// Activation and KLMover come before the domain join: klmover.exe lives
+	// inside the Kaspersky NetworkAgent folder, so it only exists once
+	// Kaspersky is installed, and it points the agent at the site's server.
 	info.Println("  • Activate Kaspersky")
+	info.Println("  • Run KLMover for your site — D:\\Softwares\\Kaspersky Endpoint installer 12.3")
+	info.Println("  • Add the computer to the domain")
 	info.Println()
 	info.Println("  GitHub: https://github.com/SmonSisay/winprovision")
 	info.Println("  Open Source — Contributions & Collaborations are Welcome!")
 	info.Println()
-	info.Println("  Enjoy your day!")
-	info.Println("  July 2026 G.C")
+	info.Println("  Built July 2026 G.C. — WinProvision")
 	info.Println("  ─────────────────────────────────────────────")
 	fmt.Println()
 
