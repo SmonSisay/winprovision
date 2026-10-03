@@ -1,141 +1,141 @@
 {
-  "applications": [
-    {
-      "name": "Google Chrome",
-      "installerPath": "Chrome/ChromeStandaloneSetup64.exe",
-      "silentArgs": "/silent /install",
-      "version": "latest",
-      "attendedFallback": true,
-      "desktopShortcut": {
-        "enabled": false
-      },
-      "detection": {
-        "executablePath": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
-      }
-    },
-    {
-      "name": "Mozilla Firefox",
-      "installerPath": "Firefox/Mozilla_Firefox_(32bit)_v82.0.3.exe",
-      "silentArgs": "/S",
-      "version": "latest",
-      "attendedFallback": true,
-      "desktopShortcut": {
-        "enabled": false
-      },
-      "detection": {
-        "executablePath": "C:\\Program Files\\Mozilla Firefox\\firefox.exe"
-      }
-    },
-    {
-      "name": "Microsoft Office",
-      "installerPath": "MicrosoftOffice/setup.exe",
-      "silentArgs": "/config proplus.ww\\config.xml",
-      "version": "latest",
-      "attendedFallback": true,
-      "desktopShortcut": {
-        "enabled": false
-      },
-      "detection": {
-        "executablePath": "C:\\Program Files\\Microsoft Office\\Office15\\WINWORD.EXE"
-      }
-    },
-    {
-      "name": "Adobe Reader",
-      "installerPath": "AdobeReader/AdbeRdr11010_en_US.exe",
-      "silentArgs": "/sAll /rs /msi EULA_ACCEPT=YES",
-      "version": "latest",
-      "attendedFallback": true,
-      "desktopShortcut": {
-        "enabled": false
-      },
-      "detection": {
-        "executablePath": "C:\\Program Files (x86)\\Adobe\\Acrobat Reader DC\\Reader\\AcroRd32.exe"
-      }
-    },
-    {
-      "name": "Skype for Business",
-      "installerPath": "Skype4Business/lyncentry_X64.exe",
-      "silentArgs": "/quiet /norestart",
-      "version": "latest",
-      "alwaysInstall": true,
-      "attendedFallback": true,
-      "desktopShortcut": {
-        "enabled": false
-      },
-      "detection": {
-        "executablePath": "C:\\Program Files\\Microsoft Office\\Office15\\lync.exe"
-      }
-    },
-    {
-      "name": "Visual Geez",
-      "installerPath": "VisualGeez/setup.exe",
-      "silentArgs": "/S /v/qn",
-      "version": "latest",
-      "attendedFallback": true,
-      "desktopShortcut": {
-        "enabled": false
-      },
-      "detection": {
-        "installDir": "C:\\Program Files\\Visual Geez"
-      }
-    },
-    {
-      "name": "Power Geez",
-      "installerPath": "PowerGeez/iNSTALL Ge'ez 10.exe",
-      "silentArgs": "",
-      "version": "latest",
-      "attendedOnly": true,
-      "desktopShortcut": {
-        "enabled": false
-      },
-      "detection": {
-        "installDir": "C:\\Program Files\\Power Geez"
-      },
-      "deploy": {
-        "sourceDir": "payload",
-        "installDir": "C:\\Program Files\\Power Geez",
-        "fontsDir": "FontsFolder",
-        "registerFiles": [
-          "Calendar.ocx",
-          "Flash_Button.ocx",
-          "SkinControl.ocx"
-        ],
-        "executable": "pg2010.exe"
-      }
-    },
-    {
-      "name": "Kaspersky",
-      "installerPath": "Kaspersky Endpoint installer 12.3/Kaspersky Endpoint security installer 12.3 update - Copy.exe",
-      "silentArgs": "/s /norestart /vEULA=1 /vPRIVACYPOLICY=1",
-      "version": "latest",
-      "attendedFallback": true,
-      "desktopShortcut": {
-        "enabled": false
-      },
-      "detection": {
-        "installDir": "C:\\Program Files (x86)\\Kaspersky Lab"
-      }
-    },
-    {
-      "name": "FortiNAC Persistent Agent",
-      "installerPath": "FortiNAC/FortiNAC Persistent Agent New.msi",
-      "silentArgs": "/qn /norestart",
-      "version": "latest",
-      "attendedFallback": true,
-      "desktopShortcut": {
-        "enabled": false
-      },
-      "detection": {
-        "installDir": "C:\\Program Files\\FortiNAC\\PersistentAgent"
-      }
-    },
-    {
-      "name": "Copy-only Files",
-      "installerPath": "CopyOnly/",
-      "copyOnly": true,
-      "desktopShortcut": {
-        "enabled": false
-      }
-    }
-  ]
+    "applications": [
+        {
+            "name": "Google Chrome",
+            "installerPath": "Chrome/ChromeStandaloneSetup64.exe",
+            "silentArgs": "/silent /install",
+            "version": "latest",
+            "attendedFallback": true,
+            "desktopShortcut": {
+                "enabled": false
+            },
+            "detection": {
+                "executablePath": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
+            }
+        },
+        {
+            "name": "Mozilla Firefox",
+            "installerPath": "Firefox/Mozilla_Firefox_(32bit)_v82.0.3.exe",
+            "silentArgs": "/S",
+            "version": "latest",
+            "attendedFallback": true,
+            "desktopShortcut": {
+                "enabled": false
+            },
+            "detection": {
+                "executablePath": "C:\\Program Files\\Mozilla Firefox\\firefox.exe"
+            }
+        },
+        {
+            "name": "Microsoft Office",
+            "installerPath": "MicrosoftOffice/setup.exe",
+            "silentArgs": "/config proplus.ww\\config.xml",
+            "version": "latest",
+            "attendedFallback": true,
+            "desktopShortcut": {
+                "enabled": false
+            },
+            "detection": {
+                "executablePath": "C:\\Program Files\\Microsoft Office\\Office16\\WINWORD.EXE"
+            }
+        },
+        {
+            "name": "Adobe Reader",
+            "installerPath": "AdobeReader/AdbeRdr11010_en_US.exe",
+            "silentArgs": "/sAll /rs /msi EULA_ACCEPT=YES",
+            "version": "latest",
+            "attendedFallback": true,
+            "desktopShortcut": {
+                "enabled": false
+            },
+            "detection": {
+                "executablePath": "C:\\Program Files (x86)\\Adobe\\Acrobat Reader DC\\Reader\\AcroRd32.exe"
+            }
+        },
+        {
+            "name": "Skype for Business",
+            "installerPath": "Skype4Business/lyncentry_X64.exe",
+            "silentArgs": "/quiet /norestart",
+            "version": "latest",
+            "alwaysInstall": true,
+            "attendedFallback": true,
+            "desktopShortcut": {
+                "enabled": false
+            },
+            "detection": {
+                "executablePath": "C:\\Program Files\\Microsoft Office\\Office16\\lync.exe"
+            }
+        },
+        {
+            "name": "Visual Geez",
+            "installerPath": "VisualGeez/setup.exe",
+            "silentArgs": "/S /v/qn",
+            "version": "latest",
+            "attendedFallback": true,
+            "desktopShortcut": {
+                "enabled": false
+            },
+            "detection": {
+                "installDir": "C:\\Program Files\\Visual Geez"
+            }
+        },
+        {
+            "name": "Power Geez",
+            "installerPath": "PowerGeez/iNSTALL Ge'ez 10.exe",
+            "silentArgs": "",
+            "version": "latest",
+            "attendedOnly": true,
+            "desktopShortcut": {
+                "enabled": false
+            },
+            "detection": {
+                "installDir": "C:\\Program Files\\Power Geez"
+            },
+            "deploy": {
+                "sourceDir": "payload",
+                "installDir": "C:\\Program Files\\Power Geez",
+                "fontsDir": "FontsFolder",
+                "registerFiles": [
+                    "Calendar.ocx",
+                    "Flash_Button.ocx",
+                    "SkinControl.ocx"
+                ],
+                "executable": "pg2010.exe"
+            }
+        },
+        {
+            "name": "Kaspersky",
+            "installerPath": "Kaspersky Endpoint installer 12.3/Kaspersky Endpoint security installer 12.3 update - Copy.exe",
+            "silentArgs": "/s /norestart /vEULA=1 /vPRIVACYPOLICY=1",
+            "version": "latest",
+            "attendedFallback": true,
+            "desktopShortcut": {
+                "enabled": false
+            },
+            "detection": {
+                "installDir": "C:\\Program Files (x86)\\Kaspersky Lab"
+            }
+        },
+        {
+            "name": "FortiNAC Persistent Agent",
+            "installerPath": "FortiNAC/FortiNAC Persistent Agent New.msi",
+            "silentArgs": "/qn /norestart",
+            "version": "latest",
+            "attendedFallback": true,
+            "desktopShortcut": {
+                "enabled": false
+            },
+            "detection": {
+                "installDir": "C:\\Program Files\\FortiNAC\\PersistentAgent"
+            }
+        },
+        {
+            "name": "Copy-only Files",
+            "installerPath": "CopyOnly/",
+            "copyOnly": true,
+            "desktopShortcut": {
+                "enabled": false
+            }
+        }
+    ]
 }

@@ -735,30 +735,10 @@ func DiscoverAndInstall(
 			continue
 		}
 
-		cmd := exec.CommandContext(ctx, exePath, defaultSilentArgs...)
-		cmd.Dir = filepath.Dir(exePath)
-		cmd.Stdout = os.Stdout
-		cmd.Stderr = os.Stderr
-		runErr := cmd.Run()
-		duration := time.Since(start)
-		if runErr != nil {
-			exitCode := -1
-			if cmd.ProcessState != nil {
-				exitCode = cmd.ProcessState.ExitCode()
-			}
-			if successExitCodes[exitCode] {
-				result.Status = models.TaskStatusSuccess
-				result.Message = fmt.Sprintf("Installed from %s (exit=%d)", filepath.Base(exePath), exitCode)
-			} else {
-				result.Status = models.TaskStatusFailed
-				result.Message = fmt.Sprintf("Installer failed (exit=%d)", exitCode)
-				result.Err = fmt.Errorf("run discovered installer %s: %w", exePath, runErr)
-			}
-		} else {
-			result.Status = models.TaskStatusSuccess
-			result.Message = "Installed from " + filepath.Base(exePath)
-		}
-		result.Duration = duration
+		// Report-only for unconfigured folders: do not auto-run discovered installers.
+		result.Status = models.TaskStatusSkipped
+		result.Message = "Unconfigured installer folder " + dirName + " — add it to apps.json to install it"
+		result.Duration = time.Since(start)
 		results = append(results, result)
 	}
 	return results
