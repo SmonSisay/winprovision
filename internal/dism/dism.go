@@ -96,13 +96,21 @@ func EnableDotNet35(ctx context.Context, sxsPath string) models.TaskResult {
 			result.Duration = duration
 			return result
 		}
+		// DISM reports servicing errors on stdout, not stderr, so a
+		// stderr-only message comes out empty and hides the real cause
+		// (e.g. "0x800f0912 The source files could not be found").
+		// Fall back to stdout so the operator sees why it failed.
+		detail := strings.TrimSpace(stderr.String())
+		if detail == "" {
+			detail = strings.TrimSpace(stdout.String())
+		}
 		result.Status = models.TaskStatusFailed
 		result.Message = fmt.Sprintf(
 			"DISM failed (exit=%d, duration=%s, source=%s): %s",
 			exitCode,
 			duration.Round(time.Millisecond),
 			cleanPath,
-			strings.TrimSpace(stderr.String()),
+			detail,
 		)
 		result.Err = fmt.Errorf("enable NetFx3 (source=%s): %w; stdout=%s; stderr=%s", cleanPath, runErr, stdout.String(), stderr.String())
 		result.Duration = duration
