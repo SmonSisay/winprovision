@@ -127,7 +127,8 @@
             },
             "detection": {
                 "installDir": "C:\\Program Files\\FortiNAC\\PersistentAgent"
-            }
+            },
+            "alwaysInstall": true
         },
         {
             "name": "Copy-only Files",
