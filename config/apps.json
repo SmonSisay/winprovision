@@ -31,7 +31,7 @@
             "installerPath": "MicrosoftOffice/setup.exe",
             "silentArgs": "/config proplus.ww\\config.xml",
             "version": "latest",
-            "attendedFallback": true,
+            "attendedFallback": false,
             "desktopShortcut": {
                 "enabled": false
             },
@@ -108,7 +108,7 @@
             "installerPath": "Kaspersky Endpoint installer 12.3/Kaspersky Endpoint security installer 12.3 update - Copy.exe",
             "silentArgs": "/s /norestart /vEULA=1 /vPRIVACYPOLICY=1",
             "version": "latest",
-            "attendedFallback": true,
+            "attendedFallback": false,
             "desktopShortcut": {
                 "enabled": false
             },
