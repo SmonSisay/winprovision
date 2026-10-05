@@ -36,7 +36,7 @@
                 "enabled": false
             },
             "detection": {
-                "executablePath": "C:\\Program Files\\Microsoft Office\\Office16\\WINWORD.EXE"
+                "executablePath": "C:\\Program Files (x86)\\Microsoft Office\\Office16\\WINWORD.EXE"
             }
         },
         {
@@ -63,7 +63,7 @@
                 "enabled": false
             },
             "detection": {
-                "executablePath": "C:\\Program Files\\Microsoft Office\\Office16\\lync.exe"
+                "executablePath": "C:\\Program Files (x86)\\Microsoft Office\\Office16\\lync.exe"
             }
         },
         {
