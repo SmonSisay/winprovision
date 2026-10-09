@@ -107,7 +107,7 @@
         {
             "name": "Kaspersky",
             "installerPath": "Kaspersky Endpoint installer 12.3/Kaspersky Endpoint security installer 12.3 update - Copy.exe",
-            "silentArgs": "/s /norestart /vEULA=1 /vPRIVACYPOLICY=1",
+            "silentArgs": "/s",
             "version": "latest",
             "attendedFallback": false,
             "desktopShortcut": {
