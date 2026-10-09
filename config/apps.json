@@ -109,7 +109,7 @@
             "installerPath": "Kaspersky Endpoint installer 12.3/Kaspersky Endpoint security installer 12.3 update - Copy.exe",
             "silentArgs": "/s",
             "version": "latest",
-            "attendedFallback": false,
+            "attendedFallback": true,
             "desktopShortcut": {
                 "enabled": false
             },
